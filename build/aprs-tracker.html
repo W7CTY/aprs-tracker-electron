@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.1.7 - build 20260704 -->
+<!-- APRSaR Tracker v6.1.8 - build 20260704 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -763,6 +763,14 @@ body.light #map-fullscreen-btn:hover{background:#f0f0f0}
 body.map-fs #sidebar{display:none!important}
 body.map-fs #map{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:900!important}
 body.map-fs #map-fullscreen-btn{z-index:1000;top:12px;left:12px}
+#map-wx-hud{display:none;position:fixed;top:12px;right:12px;z-index:1000;
+  background:rgba(0,0,0,0.72);border:1px solid rgba(255,255,255,0.2);
+  border-radius:8px;padding:10px 14px;color:#fff;font-family:monospace;
+  font-size:13px;line-height:1.5;backdrop-filter:blur(4px);
+  box-shadow:0 2px 12px rgba(0,0,0,.7);min-width:140px}
+body.map-fs #map-wx-hud{display:block}
+body.light #map-wx-hud{background:rgba(255,255,255,0.85);color:#1a1a1a;
+  border-color:rgba(0,0,0,0.2)}
 /* Forecast accordion */
 .fc-day{border:1px solid var(--border);border-radius:7px;margin-bottom:6px;overflow:hidden}
 .fc-day-hdr{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;background:var(--card-bg);user-select:none}
@@ -1032,6 +1040,7 @@ body.light #coord-display{background:rgba(255,255,255,.92)}
   <div id="mapwrap">
     <div id="map"></div>
 <button id="map-fullscreen-btn" onclick="toggleMapFullscreen()" title="Toggle fullscreen map">&#x26F6;</button>
+<div id="map-wx-hud">&#9925; --</div>
     <div id="mctrl">
       <button class="mbtn" onclick="fitAll()" title="Fit all">&#x26F6;</button>
       <button class="mbtn" onclick="toggleLabels()" title="Labels">&#127991;</button>
@@ -1230,6 +1239,28 @@ function initMap() {
   });
   initCoordDisplay();
   console.log('Map initialized OK');
+}
+
+function updateMapWxHUD() {
+  var el = document.getElementById('map-wx-hud');
+  if (!el) return;
+  if (!weatherData || !weatherData.current) {
+    el.innerHTML = '&#9925; --';
+    return;
+  }
+  var c = weatherData.current;
+  var compass = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  var wdir = compass[Math.round((c.wind_direction_10m||0) / 22.5) % 16];
+  var clr = (c.wind_speed_10m||0) < 5 ? '#4ade80' : (c.wind_speed_10m||0) < 15 ? '#facc15' : (c.wind_speed_10m||0) < 25 ? '#fb923c' : '#f87171';
+  el.innerHTML =
+    '<div style="font-size:20px;text-align:center">' + wmoIcon(c.weather_code) + '</div>'
+    + '<div style="font-size:16px;font-weight:700;text-align:center">' + Math.round(c.temperature_2m) + '\u00B0F'
+    + ' <span style="font-size:11px;opacity:0.7">feels ' + Math.round(c.apparent_temperature) + '\u00B0</span></div>'
+    + '<div style="font-size:11px;opacity:0.8;text-align:center">' + wmoDesc(c.weather_code) + '</div>'
+    + '<div style="margin-top:6px;font-size:12px;color:' + clr + '">'
+    + '&#127756; ' + Math.round(c.wind_speed_10m||0) + ' mph ' + wdir
+    + (c.wind_gusts_10m > (c.wind_speed_10m||0) + 3 ? ' <span style="opacity:0.7">gusts ' + Math.round(c.wind_gusts_10m) + '</span>' : '')
+    + '</div>';
 }
 
 function toggleMapFullscreen() {
@@ -1819,6 +1850,8 @@ window.addEventListener('load', function() {
   if (typeof redrawOperationOnMap === 'function') redrawOperationOnMap();
   swTab('stations');
   setSt('ok', 'Ready');
+  startAutoLog();
+  setTimeout(autoLogCheckRecovery, 800); // after map is ready
   if (typeof refreshMeshcorePorts === 'function') refreshMeshcorePorts();
   // Start loading area beacons immediately -- triggers a background APRS-IS
   // range scan; if the messaging backend (aprslib) isn't running, this
@@ -4120,9 +4153,20 @@ function startRadarRefresh() {
   stopRadarRefresh();
   if (!radarRefreshInterval || !radarVisible) return;
   radarRefreshTimer = setInterval(function() {
-    if (!radarOverlay || !radarVisible) return;
-    // Cache-bust forces a fresh tile fetch on each interval
-    radarOverlay.setUrl(IEM_RADAR_URL + '?_t=' + Date.now());
+    if (!radarVisible) return;
+    try {
+      if (!radarOverlay) {
+        // Radar layer lost — recreate it
+        radarOverlay = L.tileLayer(IEM_RADAR_URL, {
+          opacity: 0.65, tileSize: 256, maxZoom: 19, maxNativeZoom: 7, zIndex: 500,
+          attribution: 'Radar: <a href="https://mesonet.agron.iastate.edu" target="_blank">IEM NEXRAD</a>'
+        });
+        radarOverlay.addTo(map);
+      }
+      radarOverlay.setUrl(IEM_RADAR_URL + '?_t=' + Date.now());
+    } catch(e) {
+      console.warn('Radar refresh error:', e.message);
+    }
   }, radarRefreshInterval * 60 * 1000);
 }
 
@@ -4202,18 +4246,53 @@ async function setWeatherLocation() {
 // Severe Thunderstorm Warnings are flagged with ⚡ since NWS explicitly
 // describes lightning in them. There is no free public lightning strike
 // API (NLDN/ENTLN are commercial; GOES GLM is NetCDF, not a REST feed).
+var seenAlertIds     = new Set();    // track already-notified alerts
+var alertPollTimer   = null;         // background polling interval
+var ALERT_POLL_MS    = 5 * 60 * 1000; // poll every 5 minutes
+
 async function loadWxAlerts(lat, lon) {
   wxAlerts = null;
   try {
     var r = await fetch(
       'https://api.weather.gov/alerts/active?point=' + lat.toFixed(4) + ',' + lon.toFixed(4),
-      { headers: { 'User-Agent': 'aprs-tracker/3.0 W7CTY' } }
+      { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
     );
     if (!r.ok) { wxAlerts = []; return; }
     var data = await r.json();
     wxAlerts = (data.features || []).map(function(f) { return f.properties; });
+    // Push notification for new alerts
+    wxAlerts.forEach(function(a) {
+      var id = a.id || (a.event + a.effective);
+      if (!seenAlertIds.has(id)) {
+        seenAlertIds.add(id);
+        var sev = a.severity || 'Unknown';
+        if (['Extreme','Severe','Moderate'].includes(sev)) {
+          showAlertNotification(
+            '\u26A0\uFE0F ' + (a.event || 'NWS Alert'),
+            (a.headline || a.description || '').substring(0, 200)
+          );
+        }
+      }
+    });
   } catch(e) { wxAlerts = []; }
   if (curTab === 'weather') renderTabInto('weather', 'tcont');
+}
+
+function startAlertPolling() {
+  if (alertPollTimer) return;
+  // Request notification permission on first poll start
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+  alertPollTimer = setInterval(function() {
+    var lat = (weatherLat !== null) ? weatherLat : map.getCenter().lat;
+    var lon = (weatherLon !== null) ? weatherLon : map.getCenter().lng;
+    loadWxAlerts(lat, lon);
+  }, ALERT_POLL_MS);
+}
+
+function stopAlertPolling() {
+  if (alertPollTimer) { clearInterval(alertPollTimer); alertPollTimer = null; }
 }
 
 function alertSeverityColor(s) {
@@ -4324,6 +4403,7 @@ async function loadWeather(forceLat, forceLon) {
 
   if (curTab === 'weather') renderTabInto('weather','tcont');
   if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
+  startAlertPolling();
 }
 
 function wmoDesc(code) {
@@ -4549,6 +4629,8 @@ function weatherHTML() {
     + '<div class="result-box"><div class="rk">PRESSURE</div><div class="rv" style="font-size:13px">' + Math.round(cur.pressure_msl) + ' hPa</div></div>'
     + '<div class="result-box"><div class="rk">PRECIP</div><div class="rv" style="font-size:13px">' + cur.precipitation + ' in</div></div>'
     + '</div>';
+  html += '<div class="sec-h" style="margin-top:12px">Wind</div>';
+  html += renderWindRose(cur.wind_speed_10m||0, cur.wind_direction_10m||0, cur.wind_gusts_10m||0);
 
   // ── Precipitation type / intensity breakdown ──────────────────────
   html += '<div class="sec-h" style="margin-top:14px">Next 24 Hours — Precipitation Type &amp; Intensity</div>'
@@ -4648,11 +4730,6 @@ function weatherHTML() {
       + '</div>';
   }
 
-  html += '<div class="sec-h" style="margin-top:16px">Wind</div>';
-  if (weatherData && weatherData.current) {
-    var wc = weatherData.current;
-    html += renderWindRose(wc.wind_speed_10m||0, wc.wind_direction_10m||0, wc.wind_gusts_10m||0);
-  }
   html += '<div class="frow" style="margin-top:10px;gap:6px">'
     + '<button class="sbtn ' + (alertPolysVisible ? 'sbtn-primary' : '') + '" onclick="toggleAlertPolygons()" style="flex:1">⚠️ Alert Zones</button>'
     + '</div>';
@@ -4661,6 +4738,84 @@ function weatherHTML() {
   return html;
 }
 
+
+// ── Auto-log / crash recovery ────────────────────────────────────────
+// Saves a snapshot of app state to localStorage every 60s.
+// On next launch, detects an unclean shutdown and offers to restore.
+var AUTO_LOG_KEY    = 'aprsartracker_autolog';
+var AUTO_LOG_DIRTY  = 'aprsartracker_session_active';
+var autoLogTimer    = null;
+
+function autoLogSave() {
+  try {
+    var state = {
+      ts:           Date.now(),
+      version:      '6.1.8',
+      callsign:     (document.getElementById('callsign') || {}).value || '',
+      mapCenter:    map ? [map.getCenter().lat, map.getCenter().lng] : null,
+      mapZoom:      map ? map.getZoom() : null,
+      baseLayer:    currentBaseLayerName || 'natgeo',
+      radarOn:      radarVisible || false,
+      radarInterval:radarRefreshInterval || 5,
+      weatherLat:   weatherLat,
+      weatherLon:   weatherLon,
+      darkMode:     document.body.classList.contains('light') ? false : true,
+      curTab:       curTab || 'map'
+    };
+    localStorage.setItem(AUTO_LOG_KEY, JSON.stringify(state));
+  } catch(e) { /* storage may be unavailable */ }
+}
+
+function autoLogMarkClean() {
+  try { localStorage.removeItem(AUTO_LOG_DIRTY); } catch(e) {}
+}
+
+function autoLogCheckRecovery() {
+  try {
+    var raw = localStorage.getItem(AUTO_LOG_KEY);
+    var wasActive = localStorage.getItem(AUTO_LOG_DIRTY);
+    if (!raw || !wasActive) return;
+    var state = JSON.parse(raw);
+    var ageMin = (Date.now() - (state.ts || 0)) / 60000;
+    if (ageMin > 720) return; // ignore saves older than 12 hours
+    // Restore map state silently
+    if (state.mapCenter && state.mapZoom && map) {
+      map.setView(state.mapCenter, state.mapZoom);
+    }
+    if (state.baseLayer && typeof switchBaseLayer === 'function') {
+      switchBaseLayer(state.baseLayer);
+    }
+    if (state.callsign) {
+      var cs = document.getElementById('callsign');
+      if (cs) cs.value = state.callsign;
+    }
+    if (!state.darkMode && !document.body.classList.contains('light')) {
+      document.body.classList.add('light');
+    }
+    // Restore radar if it was on
+    if (state.radarOn && typeof toggleRadarOverlay === 'function') {
+      radarRefreshInterval = state.radarInterval || 5;
+      toggleRadarOverlay();
+    }
+    // Log the recovery event
+    if (typeof logEvent === 'function') {
+      logEvent('App recovered from unclean shutdown (last seen ' + Math.round(ageMin) + ' min ago)', 'system');
+    }
+    console.info('APRSaR: restored state from auto-log (' + Math.round(ageMin) + ' min ago)');
+  } catch(e) { console.warn('Auto-log recovery failed:', e.message); }
+}
+
+function startAutoLog() {
+  if (autoLogTimer) return;
+  try { localStorage.setItem(AUTO_LOG_DIRTY, '1'); } catch(e) {}
+  autoLogSave(); // save immediately
+  autoLogTimer = setInterval(autoLogSave, 60000); // then every 60s
+  // Mark clean on intentional close
+  window.addEventListener('beforeunload', function() {
+    autoLogSave();
+    autoLogMarkClean();
+  });
+}
 
 function fcToggle(dayId) {
   var body = document.getElementById(dayId + '-body');
