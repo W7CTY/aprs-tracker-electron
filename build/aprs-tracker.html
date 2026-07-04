@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.1.10 - build 20260704 -->
+<!-- APRSaR Tracker v6.1.11 - build 20260704 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1640,34 +1640,24 @@ function toggleTheme() {
 // an optional group header for visual organization in the dropdown
 // (purely cosmetic -- swTab/sarTabHTML2 still just match on key).
 var TAB_DEFS = [
-  { group: 'Live' },
-  { key:'stations',   label:'Stations' },
-  { key:'operations', label:'Operations' },
-  { key:'trail',       label:'Trail' },
-  { key:'alert',       label:'Emergency Alert' },
-  { group: 'SAR Toolkit' },
+  { group: 'Primary' },
+  { key:'stations',    label:'APRS' },
+  { key:'weather',     label:'Weather' },
+  { key:'msg',         label:'Messages' },
+  { key:'mesh',        label:'Mesh' },
+  { group: 'SAR Operations' },
   { key:'subjects',    label:'Subjects' },
-  { key:'search',      label:'Search Sectors' },
+  { key:'search',      label:'Search' },
   { key:'sarops',      label:'SAR Ops' },
   { key:'roster',      label:'Roster' },
-  { key:'tcards',      label:'T-Cards / QR Check-In' },
-  { key:'log',         label:'Log' },
+  { key:'operations',  label:'Operations' },
+  { group: 'Tools & Data' },
   { key:'tools',       label:'Tools' },
-  { group: 'Calculators' },
-  { key:'nav',         label:'Nav (Pacing / Intersection)' },
-  { key:'searchmath',  label:'Search Math (AMDR / POD)' },
-  { key:'rope',        label:'Rope Rescue' },
-  { key:'marine',      label:'Marine' },
-  { key:'kit',         label:'Kit Lists' },
-  { key:'refs',        label:'Field References' },
-  { group: 'Comms & Data' },
-  { key:'mesh',        label:'Mesh' },
-  { key:'msg',         label:'Messages' },
-  { key:'weather',     label:'Weather' },
-  { key:'offline',     label:'Offline Maps' },
+  { key:'offline',     label:'Offline' },
+  { key:'log',         label:'Log' },
   { group: 'App' },
   { key:'about',       label:'About' },
-  { key:'info',        label:'Help / Info' }
+  { key:'info',        label:'Help' }
 ];
 
 function tabLabel(key) {
@@ -4751,7 +4741,7 @@ function autoLogSave() {
   try {
     var state = {
       ts:           Date.now(),
-      version:      '6.1.10',
+      version:      '6.1.11',
       callsign:     (document.getElementById('callsign') || {}).value || '',
       mapCenter:    map ? [map.getCenter().lat, map.getCenter().lng] : null,
       mapZoom:      map ? map.getZoom() : null,
@@ -5965,7 +5955,7 @@ function applyImportedData(imported, sourceFilename) {
 }
 
 function aboutHTML() {
-  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.1.10';
+  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.1.11';
   var repoUrl = (typeof window !== 'undefined' && window.APP_REPO_URL) ? window.APP_REPO_URL : 'https://github.com/W7CTY/aprs-tracker';
   return '<div style="text-align:center;padding:8px 4px 16px">'
     + '<div style="font-family:monospace;font-size:22px;font-weight:700;color:var(--orange);letter-spacing:.04em">APRS<span style="color:var(--cyan)">TRACK</span></div>'
