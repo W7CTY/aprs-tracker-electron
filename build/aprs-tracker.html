@@ -4236,12 +4236,12 @@ var nwsForecast = null; // NWS daily text forecast periods
 async function fetchNWSForecast(lat, lon) {
   try {
     var ptResp = await fetch('https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4),
-      { headers: { 'User-Agent': 'aprsartracker/6.1 W7CTY' } });
+      { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } });
     if (!ptResp.ok) return null;
     var ptData = await ptResp.json();
     var fcUrl = ptData.properties && ptData.properties.forecast;
     if (!fcUrl) return null;
-    var fcResp = await fetch(fcUrl, { headers: { 'User-Agent': 'aprsartracker/6.1 W7CTY' } });
+    var fcResp = await fetch(fcUrl, { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } });
     if (!fcResp.ok) return null;
     var fcData = await fcResp.json();
     return (fcData.properties && fcData.properties.periods) ? fcData.properties.periods : null;
@@ -4260,15 +4260,14 @@ async function loadWeather(forceLat, forceLon) {
   nwsForecast = null;
   document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather...</div>';
   try {
-    var omPromise = fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+    var omResp = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
       + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
       + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
       + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
       + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7');
-    var nwsPromise = fetchNWSForecast(lat, lon);
-    var omResp = await omPromise;
     weatherData = await omResp.json();
-    nwsForecast = await nwsPromise;
+    // NWS forecast is supplemental — never let it break Open-Meteo display
+    try { nwsForecast = await fetchNWSForecast(lat, lon); } catch(e) { nwsForecast = null; }
     if (curTab === 'weather') renderTabInto('weather','tcont');
     if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
   } catch(e) {
@@ -4664,7 +4663,7 @@ async function loadAlertPolygons() {
   try {
     var center = map.getCenter();
     var r = await fetch('https://api.weather.gov/alerts/active?point=' + center.lat.toFixed(4) + ',' + center.lng.toFixed(4),
-      { headers: { 'User-Agent': 'aprsartracker/6.1 W7CTY' } });
+      { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } });
     if (!r.ok) return;
     var data = await r.json();
     if (alertPolyLayer) { map.removeLayer(alertPolyLayer); alertPolyLayer = null; }
