@@ -1,0 +1,7 @@
+Place aprs-tracker.ico here before building.
+Convert from the Linux SVG:
+  inkscape data/icons/aprs-tracker.svg -o build/aprs-tracker.png -w 256 -h 256
+  convert build/aprs-tracker.png -resize 256x256 build/icon.ico
+
+Or use ImageMagick:
+  convert data/icons/aprs-tracker-256.png build/icon.ico

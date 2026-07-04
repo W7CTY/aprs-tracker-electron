@@ -1,0 +1,72 @@
+{
+  "name": "aprs-tracker",
+  "productName": "APRSaR Tracker",
+  "version": "1.0.0",
+  "description": "Full-featured SAR & APRS toolkit for ham radio operators",
+  "main": "src/main.js",
+  "author": {
+    "name": "W7CTY / 914 Communications",
+    "email": "admin@914communications.co"
+  },
+  "license": "Proprietary",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:all": "electron-builder --win --x64 --ia32"
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "co.914communications.aprs-tracker",
+    "productName": "APRSaR Tracker",
+    "copyright": "Copyright © 2026 W7CTY / 914 Communications",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "build/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/",
+        "to": "build/",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "publisherName": "914 Communications"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "APRSaR Tracker",
+      "deleteAppDataOnUninstall": false,
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "uninstallerSidebar": "build/installer-sidebar.bmp"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "W7CTY",
+      "repo": "aprs-tracker-electron"
+    }
+  }
+}
