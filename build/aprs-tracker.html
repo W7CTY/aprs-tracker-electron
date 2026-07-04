@@ -4231,21 +4231,45 @@ function wxAlertsHTML(lat, lon) {
   }).join('');
 }
 
-var nwsForecast = null; // NWS daily text forecast periods
+var nwsForecast = null;   // NWS forecast periods
+var nwsHourly   = null;   // NWS hourly periods
+var nwsGridData = null;    // NWS gridpoint metadata (office, gridX, gridY, timezone)
 
-async function fetchNWSForecast(lat, lon) {
+// ── NWS weather fetch (primary source for US locations) ───────────────
+// Uses api.weather.gov — free, no API key, official NWS data
+// Falls back to Open-Meteo for current conditions if NWS unavailable
+async function fetchNWSAll(lat, lon) {
+  var UA = 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)';
   try {
-    var ptResp = await fetch('https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4),
-      { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } });
+    // Step 1: get gridpoint metadata
+    var ptResp = await fetch(
+      'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4),
+      { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } }
+    );
     if (!ptResp.ok) return null;
     var ptData = await ptResp.json();
-    var fcUrl = ptData.properties && ptData.properties.forecast;
-    if (!fcUrl) return null;
-    var fcResp = await fetch(fcUrl, { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } });
-    if (!fcResp.ok) return null;
-    var fcData = await fcResp.json();
-    return (fcData.properties && fcData.properties.periods) ? fcData.properties.periods : null;
-  } catch(e) { return null; }
+    var props = ptData.properties;
+    if (!props) return null;
+    nwsGridData = { office: props.cwa, gridX: props.gridX, gridY: props.gridY, tz: props.timeZone };
+
+    // Step 2: fetch forecast and hourly forecast in parallel
+    var [fcResp, hrResp, obsResp] = await Promise.all([
+      fetch(props.forecast,       { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } }),
+      fetch(props.forecastHourly, { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } }),
+      fetch('https://api.weather.gov/gridpoints/' + props.cwa + '/' + props.gridX + ',' + props.gridY + '/stations',
+            { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } })
+    ]);
+    var fcData = fcResp.ok  ? await fcResp.json() : null;
+    var hrData = hrResp.ok  ? await hrResp.json() : null;
+
+    return {
+      periods:       fcData && fcData.properties ? fcData.properties.periods : null,
+      hourlyPeriods: hrData && hrData.properties ? hrData.properties.periods : null,
+    };
+  } catch(e) {
+    console.warn('NWS fetch failed:', e.message);
+    return null;
+  }
 }
 
 async function loadWeather(forceLat, forceLon) {
@@ -4258,21 +4282,36 @@ async function loadWeather(forceLat, forceLon) {
 
   wxAlerts = null;
   nwsForecast = null;
+  weatherData = null;
   document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather...</div>';
+
+  // Fetch NWS and Open-Meteo in parallel — NWS for forecast text, Open-Meteo for current conditions
+  var nwsPromise = fetchNWSAll(lat, lon);
+  var omPromise  = fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
+    + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
+    + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
+    + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
+    + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7');
+
   try {
-    var omResp = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
-      + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
-      + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
-      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7');
+    var omResp  = await omPromise;
     weatherData = await omResp.json();
-    // NWS forecast is supplemental — never let it break Open-Meteo display
-    try { nwsForecast = await fetchNWSForecast(lat, lon); } catch(e) { nwsForecast = null; }
-    if (curTab === 'weather') renderTabInto('weather','tcont');
-    if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
   } catch(e) {
     document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + e.message + '</div>';
+    return;
   }
+
+  try {
+    var nwsData = await nwsPromise;
+    if (nwsData) {
+      nwsForecast = nwsData.periods;       // day/night text forecasts
+      nwsHourly   = nwsData.hourlyPeriods; // hourly NWS data
+    }
+  } catch(e) { nwsForecast = null; }
+
+  if (curTab === 'weather') renderTabInto('weather','tcont');
+  if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
 }
 
 function wmoDesc(code) {
@@ -4514,14 +4553,22 @@ function weatherHTML() {
     var dayId = 'fcday' + i;
 
     // Find matching NWS periods for this date
-    var nwsDayText = '', nwsNightText = '';
+    var nwsDayText = '', nwsNightText = '', nwsDayShort = '', nwsNightShort = '';
+    var nwsDayIcon = '', nwsNightIcon = '';
     if (nwsForecast) {
-      var dayStr = daily.time[i]; // YYYY-MM-DD
+      var dayStr = daily.time[i];
       nwsForecast.forEach(function(p) {
         if (!p.startTime) return;
         if (p.startTime.substring(0,10) === dayStr) {
-          if (p.isDaytime) nwsDayText = p.detailedForecast || p.shortForecast || '';
-          else nwsNightText = p.detailedForecast || p.shortForecast || '';
+          if (p.isDaytime) {
+            nwsDayText  = p.detailedForecast || '';
+            nwsDayShort = p.shortForecast || '';
+            nwsDayIcon  = p.icon || '';
+          } else {
+            nwsNightText  = p.detailedForecast || '';
+            nwsNightShort = p.shortForecast || '';
+            nwsNightIcon  = p.icon || '';
+          }
         }
       });
     }
@@ -4571,9 +4618,9 @@ function weatherHTML() {
       }).join('');
     }
     // NWS text forecast
-    if (nwsDayText || nwsNightText) {
-      if (nwsDayText) bodyHTML += '<div class="fc-nws"><b>Day:</b> ' + htmlEscape(nwsDayText) + '</div>';
-      if (nwsNightText) bodyHTML += '<div class="fc-nws"><b>Tonight:</b> ' + htmlEscape(nwsNightText) + '</div>';
+    if (nwsDayShort || nwsNightShort) {
+      if (nwsDayShort)   bodyHTML += '<div class="fc-nws"><b>Day:</b> ' + htmlEscape(nwsDayShort) + (nwsDayText && nwsDayText !== nwsDayShort ? '<br><span style="color:var(--muted);font-size:10px">' + htmlEscape(nwsDayText) + '</span>' : '') + '</div>';
+      if (nwsNightShort) bodyHTML += '<div class="fc-nws"><b>Tonight:</b> ' + htmlEscape(nwsNightShort) + (nwsNightText && nwsNightText !== nwsNightShort ? '<br><span style="color:var(--muted);font-size:10px">' + htmlEscape(nwsNightText) + '</span>' : '') + '</div>';
     }
     if (!bodyHTML) bodyHTML = '<div style="font-size:11px;color:var(--muted)">Hourly detail unavailable</div>';
 
