@@ -1,32 +1,39 @@
 # APRSaR Tracker — Windows
 
-Windows desktop app for APRSaR Tracker. Built on Electron, wrapping the same HTML core as the Linux version.
+Windows desktop build of APRSaR Tracker, packaged with Electron.  
+**W7CTY / 914 Communications**
 
-## Install
+**Current version: 6.1.1**
 
-Download `APRSaR-Tracker-Setup-x.x.x.exe` from [Releases](https://github.com/W7CTY/aprs-tracker-electron/releases) and run it.
+Linux version: [W7CTY/aprs-tracker](https://github.com/W7CTY/aprs-tracker)
 
-## Updates
+---
 
-**App core** (the tracker itself) updates automatically in the background on each launch. No action needed.
+## Installation
 
-**Installer/wrapper** updates are downloaded automatically and applied when you exit the app.
+Download `APRSaR-Tracker-6.1.1.zip` from the [Releases](https://github.com/W7CTY/aprs-tracker-electron/releases) page, extract, and run `Install.bat`.
 
-## Build from source
+- No admin rights required — installs to `%LOCALAPPDATA%\APRSaR Tracker`
+- Automatically removes any previous version before installing
+- Creates desktop and Start Menu shortcuts
 
-Requires Node.js 18+.
+---
 
-```bash
-git clone https://github.com/W7CTY/aprs-tracker-electron
-cd aprs-tracker-electron
-bash build-win.sh
-```
+## Features
 
-The installer will be in `dist/`.
+Full feature parity with the Linux version. See [W7CTY/aprs-tracker](https://github.com/W7CTY/aprs-tracker) for the complete feature list.
 
-## Changelog
+Highlights:
+- Live APRS station tracking
+- NatGeo default map, Dark/Street/Topo/Satellite layers, fullscreen toggle
+- 7-day weather forecast accordion with NWS text forecasts
+- Wind rose, NWS alert zones on map
+- Full SAR operations toolkit (sectors, roster, subjects, T-Cards, GPX/KML)
+- Meshtastic and MeshCore mesh network integration
+- Two-way APRS-IS messaging
+- Coordinate converter, rope rescue calculators, marine calculators
+- Light/dark theme
 
-### 1.0.0
-- Initial Windows release
-- Auto-updates HTML core from Linux repo releases
-- Matches Linux version window layout and branding
+---
+
+W7CTY · 914 Communications · Indianapolis, IN
