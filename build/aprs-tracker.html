@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.1.6 - build 20260704 -->
+<!-- APRSaR Tracker v6.1.7 - build 20260704 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -756,8 +756,10 @@ body.light{
 .maplayer-btn:hover{background:var(--card-bg)}
 .maplayer-btn.on{background:var(--orange);color:#1a1208;font-weight:600}
 .maplayer-icon{font-size:15px}
-#map-fullscreen-btn{position:absolute;top:10px;left:10px;z-index:450;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:6px 9px;cursor:pointer;font-size:14px;color:var(--text);box-shadow:var(--shadow)}
-#map-fullscreen-btn:hover{background:var(--card-bg)}
+#map-fullscreen-btn{position:absolute;top:10px;left:10px;z-index:450;background:#1a1a1a;border:2px solid #555;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:14px;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.8);font-weight:700;line-height:1}
+#map-fullscreen-btn:hover{background:#333;border-color:#888}
+body.light #map-fullscreen-btn{background:#fff;border-color:#999;color:#222;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+body.light #map-fullscreen-btn:hover{background:#f0f0f0}
 body.map-fs #sidebar{display:none!important}
 body.map-fs #map{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:900!important}
 body.map-fs #map-fullscreen-btn{z-index:1000;top:12px;left:12px}
@@ -782,6 +784,15 @@ body.map-fs #map-fullscreen-btn{z-index:1000;top:12px;left:12px}
 .wind-rose-spd{font-size:22px;font-weight:700;margin-bottom:2px}
 .wind-rose-dir{font-size:13px}
 .wind-rose-gust{font-size:11px;color:var(--muted);margin-top:4px}
+/* Force Leaflet controls to always be visible regardless of map tile darkness */
+.leaflet-control-zoom a{background:#1a1a1a!important;color:#fff!important;border-color:#555!important}
+.leaflet-control-zoom a:hover{background:#333!important}
+body.light .leaflet-control-zoom a{background:#fff!important;color:#333!important;border-color:#ccc!important}
+body.light .leaflet-control-zoom a:hover{background:#f4f4f4!important}
+.leaflet-control-attribution{background:rgba(0,0,0,0.6)!important;color:#ccc!important}
+body.light .leaflet-control-attribution{background:rgba(255,255,255,0.8)!important;color:#333!important}
+.leaflet-bar{border:2px solid #555!important;box-shadow:0 2px 8px rgba(0,0,0,.8)!important}
+body.light .leaflet-bar{border:1px solid #ccc!important;box-shadow:0 2px 4px rgba(0,0,0,.2)!important}
 #legend{position:absolute;bottom:24px;left:10px;z-index:400;background:rgba(22,27,34,.9);border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-family:monospace;font-size:11px}
 body.light #legend{background:rgba(255,255,255,.92)}
 .lg{display:flex;align-items:center;gap:7px;color:var(--muted);margin-bottom:3px}
@@ -4299,7 +4310,7 @@ async function loadWeather(forceLat, forceLon) {
     var omResp  = await omPromise;
     weatherData = await omResp.json();
   } catch(e) {
-    document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + e.message + '</div>';
+    document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + htmlEscape(String(e.message)) + '</div>';
     return;
   }
 
@@ -4788,7 +4799,7 @@ function updateDrawToolbar() {
       + '<button class="draw-btn" onclick="cancelDraw()">Done</button>';
   } else if (drawMode === 'sarmarker') {
     var info = sarMarkerTypes[pendingSarMarkerType] || { name: 'marker' };
-    el.innerHTML = '<button class="draw-btn on">Tap map to place ' + info.name + '</button>'
+    el.innerHTML = '<button class="draw-btn on">Tap map to place ' + htmlEscape(String(info.name)) + '</button>'
       + '<button class="draw-btn" onclick="cancelDraw()">Cancel</button>';
   } else {
     el.innerHTML = '';
