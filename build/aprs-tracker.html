@@ -5263,12 +5263,6 @@ function weatherHTML() {
       + '</div>';
   }
 
-  // NWS alerts
-  var wxAlertsData = (typeof wxAlerts !== 'undefined') ? wxAlerts : null;
-  html += '<div class="sec-h">Active NWS Alerts</div>'
-    + (typeof wxAlertsHTML === 'function' ? wxAlertsHTML(lat, lon) : '')
-    + '<button class="sbtn sbtn-full" style="font-size:11px;margin-bottom:10px" onclick="wxAlerts=null;renderTabInto(\'weather\',\'tcont\')">&#8635; Refresh Alerts</button>';
-
   if (!weatherData) {
     loadWeather();
     return html + '<div class="empty">Loading weather\u2026</div>';
@@ -5462,6 +5456,11 @@ function weatherHTML() {
       + '<div class="fc-day-body" id="' + dayId + '-body">' + bodyHTML + '</div>'
       + '</div>';
   }
+
+  // NWS alerts — after weather data is confirmed loaded
+  html += '<div class="sec-h" style="margin-top:16px">Active NWS Alerts</div>'
+    + (typeof wxAlertsHTML === 'function' ? wxAlertsHTML(lat, lon) : '')
+    + '<button class="sbtn sbtn-full" style="font-size:11px;margin-top:4px;margin-bottom:8px" onclick="wxAlerts=null;renderTabInto(\'weather\',\'tcont\')">&#8635; Refresh Alerts</button>';
 
   html += '<div class="frow" style="margin-top:10px;gap:6px">'
     + '<button class="sbtn ' + (alertPolysVisible  ? 'sbtn-primary' : '') + '" onclick="toggleAlertPolygons()"  style="flex:1">⚠️ Alert Zones</button>'
