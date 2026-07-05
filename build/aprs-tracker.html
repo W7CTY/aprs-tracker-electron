@@ -2014,10 +2014,6 @@ function swTab(t) {
   document.getElementById('tab-dropdown-label').textContent = tabLabel(t);
   document.getElementById('tcont').innerHTML = sarTabHTML2(t);
   closeTabDropdown();
-  // Auto-load weather if switching to weather tab and no data yet
-  if (t === 'weather' && !weatherData && typeof loadWeather === 'function') {
-    loadWeather();
-  }
 }
 
 function renderTabDropdownPanel() {
@@ -5323,6 +5319,7 @@ function weatherHTML() {
   }
 
   if (!weatherData) {
+    loadWeather();
     return html + '<div class="empty">Loading weather\u2026</div>';
   }
 
