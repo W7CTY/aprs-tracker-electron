@@ -5092,38 +5092,41 @@ async function loadWeather(forceLat, forceLon) {
   weatherData = null;
   document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather…</div>';
 
-  // Step 1: Fetch Open-Meteo (primary — always works, renders immediately)
+  // Start both fetches in parallel (identical to 6.1.12)
+  var nwsPromise = fetchNWSAll(lat, lon);
+  var omPromise  = fetch(
+    'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
+    + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
+    + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
+    + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
+    + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7'
+  );
+
+  // Await Open-Meteo first (fast, reliable)
   try {
-    var omResp = await fetch(
-      'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
-      + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
-      + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
-      + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
-      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
-      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7'
-    );
+    var omResp = await omPromise;
     weatherData = await omResp.json();
   } catch(e) {
     document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + htmlEscape(String(e.message)) + '</div>';
     return;
   }
 
-  // Step 2: Render immediately with Open-Meteo data — do not wait for NWS
-  if (curTab === 'weather') renderTabInto('weather', 'tcont');
-  updateMapWxHUD();
-
-  // Step 3: Fetch NWS in background with 5s timeout — updates forecast text if successful
-  var nwsTimeout = new Promise(function(resolve) { setTimeout(resolve, 5000, null); });
-  Promise.race([fetchNWSAll(lat, lon), nwsTimeout]).then(function(nwsData) {
+  // Await NWS with 8-second timeout — if slow/unavailable, skip and render with OM data only
+  try {
+    var nwsTimeout = new Promise(function(resolve) { setTimeout(resolve, 8000, null); });
+    var nwsData = await Promise.race([nwsPromise, nwsTimeout]);
     if (nwsData) {
       nwsForecast = nwsData.periods;
       nwsHourly   = nwsData.hourlyPeriods;
-      // Re-render only if still on weather tab to add NWS text forecasts
-      if (curTab === 'weather') renderTabInto('weather', 'tcont');
     }
-  }).catch(function() { nwsForecast = null; });
+  } catch(e) { nwsForecast = null; }
 
-  // Step 4: Start alerts and refresh timers
+  // Render once — identical call site to 6.1.12
+  if (curTab === 'weather') renderTabInto('weather', 'tcont');
+  updateMapWxHUD();
+
+  // Start background services (alerts, auto-refresh) — no re-renders triggered here
   if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
   startAlertPolling();
   startWeatherRefresh();
