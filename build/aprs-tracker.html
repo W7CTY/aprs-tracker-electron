@@ -1631,14 +1631,12 @@ async function applySetLocation() {
   // Geocode via Nominatim — handles address, city/state, ZIP
   status.textContent = 'Searching\u2026';
   try {
-    var query = /^\d{5}(-\d{4})?$/.test(raw) ? raw + ', USA' : raw;
-    var r = await fetch(
-      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query),
-      { headers: { 'User-Agent': 'APRSaRTracker/6.2 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
-    );
+    var query = /^\d{5}$/.test(raw) ? raw + ' USA' : raw;
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=3&addressdetails=1&q=' + encodeURIComponent(query);
+    var r = await fetch(url);
     var results = await r.json();
     if (!results || !results.length) {
-      status.textContent = 'Location not found. Try a city/state or ZIP code.';
+      status.textContent = 'Not found. Try: "Indianapolis, IN" or "46201" or "123 Main St, City, ST"';
       return;
     }
     var loc = results[0];
@@ -2020,6 +2018,10 @@ function swTab(t) {
   document.getElementById('tab-dropdown-label').textContent = tabLabel(t);
   document.getElementById('tcont').innerHTML = sarTabHTML2(t);
   closeTabDropdown();
+  // Auto-load weather if switching to weather tab and no data yet
+  if (t === 'weather' && !weatherData && typeof loadWeather === 'function') {
+    loadWeather();
+  }
 }
 
 function renderTabDropdownPanel() {
@@ -4832,23 +4834,11 @@ async function setWeatherLocation() {
   if (btn) { btn.textContent = 'Searching\u2026'; btn.disabled = true; }
   try {
     // Append 'USA' if input looks like a ZIP to bias results
-    var query = /^\d{5}(-\d{4})?$/.test(val) ? val + ', USA' : val;
-    var r = await fetch(
-      'https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=us,ca&q='
-      + encodeURIComponent(query),
-      { headers: { 'User-Agent': 'APRSaRTracker/6.2 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
-    );
+    var query = /^\d{5}$/.test(val) ? val + ' USA' : val;
+    var r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=3&q=' + encodeURIComponent(query));
     var results = await r.json();
     if (!results || !results.length) {
-      // Try without country bias
-      var r2 = await fetch(
-        'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(val),
-        { headers: { 'User-Agent': 'APRSaRTracker/6.2 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
-      );
-      results = await r2.json();
-    }
-    if (!results || !results.length) {
-      toast('Location not found: "' + val + '"\nTry: City, State  or  ZIP code  or  lat, lon');
+      toast('Location not found: "' + val + '" — try City, State or ZIP');
       if (btn) { btn.textContent = 'Set'; btn.disabled = false; } return;
     }
     var best = results[0];
@@ -5290,7 +5280,6 @@ function weatherHTML() {
   }
 
   if (!weatherData) {
-    loadWeather();
     return html + '<div class="empty">Loading weather\u2026</div>';
   }
 
