@@ -4323,35 +4323,7 @@ var nwsGridData = null;    // NWS gridpoint metadata (office, gridX, gridY, time
 // ── NWS weather fetch (primary source for US locations) ───────────────
 // Uses api.weather.gov — free, no API key, official NWS data
 // Falls back to Open-Meteo for current conditions if NWS unavailable
-async function fetchNWSAll(lat, lon) {
-  try {
-    // No custom headers — bare fetch() is a CORS "simple request" from file://
-    // Custom headers trigger CORS preflight which api.weather.gov does not support
-    var ptResp = await fetch(
-      'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4)
-    );
-    if (!ptResp.ok) return null;
-    var ptData = await ptResp.json();
-    var props = ptData.properties;
-    if (!props) return null;
-    nwsGridData = { office: props.cwa, gridX: props.gridX, gridY: props.gridY, tz: props.timeZone };
 
-    var [fcResp, hrResp] = await Promise.all([
-      fetch(props.forecast),
-      fetch(props.forecastHourly)
-    ]);
-    var fcData = fcResp.ok  ? await fcResp.json() : null;
-    var hrData = hrResp.ok  ? await hrResp.json() : null;
-
-    return {
-      periods:       fcData && fcData.properties ? fcData.properties.periods : null,
-      hourlyPeriods: hrData && hrData.properties ? hrData.properties.periods : null,
-    };
-  } catch(e) {
-    console.warn('NWS fetch failed:', e.message);
-    return null;
-  }
-}
 
 async function loadWeather(forceLat, forceLon) {
   if (forceLat !== undefined && forceLon !== undefined) {
@@ -4363,35 +4335,26 @@ async function loadWeather(forceLat, forceLon) {
 
   wxAlerts = null;
   nwsForecast = null;
-  weatherData = null;
-  document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather...</div>';
+  weatherData  = null;
+  document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather…</div>';
 
-  // Fetch NWS and Open-Meteo in parallel — NWS for forecast text, Open-Meteo for current conditions
-  var nwsPromise = fetchNWSAll(lat, lon);
-  var omPromise  = fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
-    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
-    + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
-    + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
-    + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
-    + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7');
-
+  // Open-Meteo only — proven to work from file:// with no CORS issues
   try {
-    var omResp  = await omPromise;
-    weatherData = await omResp.json();
+    var resp = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+      + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
+      + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
+      + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
+      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7'
+    );
+    weatherData = await resp.json();
   } catch(e) {
     document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + htmlEscape(String(e.message)) + '</div>';
     return;
   }
 
-  try {
-    var nwsData = await nwsPromise;
-    if (nwsData) {
-      nwsForecast = nwsData.periods;       // day/night text forecasts
-      nwsHourly   = nwsData.hourlyPeriods; // hourly NWS data
-    }
-  } catch(e) { nwsForecast = null; }
-
-  if (curTab === 'weather') renderTabInto('weather','tcont');
+  if (curTab === 'weather') renderTabInto('weather', 'tcont');
   if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
   startAlertPolling();
 }
@@ -4866,8 +4829,7 @@ async function loadAlertPolygons() {
   if (!alertPolysVisible) return;
   try {
     var center = map.getCenter();
-    var r = await fetch('https://api.weather.gov/alerts/active?point=' + center.lat.toFixed(4) + ',' + center.lng.toFixed(4),
-      { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } });
+    var r = await fetch('https://api.weather.gov/alerts/active?point=' + center.lat.toFixed(4) + ',' + center.lng.toFixed(4));
     if (!r.ok) return;
     var data = await r.json();
     if (alertPolyLayer) { map.removeLayer(alertPolyLayer); alertPolyLayer = null; }
