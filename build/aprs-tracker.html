@@ -4249,8 +4249,7 @@ async function loadWxAlerts(lat, lon) {
   wxAlerts = null;
   try {
     var r = await fetch(
-      'https://api.weather.gov/alerts/active?point=' + lat.toFixed(4) + ',' + lon.toFixed(4),
-      { headers: { 'User-Agent': 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
+      'https://api.weather.gov/alerts/active?point=' + lat.toFixed(4) + ',' + lon.toFixed(4)
     );
     if (!r.ok) { wxAlerts = []; return; }
     var data = await r.json();
@@ -4325,12 +4324,11 @@ var nwsGridData = null;    // NWS gridpoint metadata (office, gridX, gridY, time
 // Uses api.weather.gov — free, no API key, official NWS data
 // Falls back to Open-Meteo for current conditions if NWS unavailable
 async function fetchNWSAll(lat, lon) {
-  var UA = 'APRSaRTracker/6.1 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)';
   try {
-    // Step 1: get gridpoint metadata
+    // No custom headers — bare fetch() is a CORS "simple request" from file://
+    // Custom headers trigger CORS preflight which api.weather.gov does not support
     var ptResp = await fetch(
-      'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4),
-      { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } }
+      'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4)
     );
     if (!ptResp.ok) return null;
     var ptData = await ptResp.json();
@@ -4338,12 +4336,9 @@ async function fetchNWSAll(lat, lon) {
     if (!props) return null;
     nwsGridData = { office: props.cwa, gridX: props.gridX, gridY: props.gridY, tz: props.timeZone };
 
-    // Step 2: fetch forecast and hourly forecast in parallel
-    var [fcResp, hrResp, obsResp] = await Promise.all([
-      fetch(props.forecast,       { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } }),
-      fetch(props.forecastHourly, { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } }),
-      fetch('https://api.weather.gov/gridpoints/' + props.cwa + '/' + props.gridX + ',' + props.gridY + '/stations',
-            { headers: { 'User-Agent': UA, 'Accept': 'application/geo+json' } })
+    var [fcResp, hrResp] = await Promise.all([
+      fetch(props.forecast),
+      fetch(props.forecastHourly)
     ]);
     var fcData = fcResp.ok  ? await fcResp.json() : null;
     var hrData = hrResp.ok  ? await hrResp.json() : null;
