@@ -3,7 +3,7 @@
 Windows desktop build of APRSaR Tracker, packaged with Electron.  
 **W7CTY / 914 Communications**
 
-**Current version: 6.1.11**
+**Current version: 6.2.0**
 
 Linux version: [W7CTY/aprs-tracker](https://github.com/W7CTY/aprs-tracker)
 
@@ -11,38 +11,20 @@ Linux version: [W7CTY/aprs-tracker](https://github.com/W7CTY/aprs-tracker)
 
 ## Installation
 
-Download `APRSaR-Tracker-6.1.11.zip` from the [Releases](https://github.com/W7CTY/aprs-tracker-electron/releases) page, extract, and run `Install.bat`.
+Download `APRSaR-Tracker-6.2.0.zip` from the [Releases](https://github.com/W7CTY/aprs-tracker-electron/releases) page, extract, and run `Install.bat`.
 
 - No admin rights required
-- Automatically removes any previous version before installing
+- Automatically removes previous versions
 - Creates desktop and Start Menu shortcuts
+- Cleans up installer files after completion
 
 ---
 
-## Menu
+## What's New in 6.2.0
 
-| Group | Items |
-|-------|-------|
-| Primary | APRS, Weather, Messages, Mesh |
-| SAR Operations | Subjects, Search, SAR Ops, Roster, Operations |
-| Tools & Data | Tools, Offline, Log |
-| App | About, Help |
+Full feature parity with the Linux version. See [W7CTY/aprs-tracker](https://github.com/W7CTY/aprs-tracker) for complete changelog.
 
----
-
-## Features
-
-Full feature parity with the Linux version. See [W7CTY/aprs-tracker](https://github.com/W7CTY/aprs-tracker) for complete details.
-
-- Live APRS tracking, NatGeo default map with Dark/Street/Topo/Satellite options
-- Fullscreen map with compact weather HUD
-- 7-day NWS forecast accordion, wind rose, alert zones
-- NWS push notifications for weather alerts
-- Full SAR operations toolkit
-- Meshtastic and MeshCore mesh network integration
-- Two-way APRS-IS messaging
-- Auto-log crash recovery
-- Light/dark theme
+Highlights: weather auto-refresh, hourly graph, lightning overlay, NWS audio alerts, expandable alerts, APRS alert messaging, station history playback, PHG circles, dead reckoning, heard list, repeater/Winlink/FEMA overlays, MGRS/Maidenhead/declination in Tools, lost person behavior profiles, clue logging, ICS forms, debriefing checklist, keyboard shortcuts, night mode auto-switch, session notes, print map.
 
 ---
 

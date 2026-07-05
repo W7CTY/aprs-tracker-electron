@@ -1,5 +1,32 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.1.12 - build 20260704 -->
+<!-- APRSaR T
+  // ── Grid & Navigation Tools ─────────────────────────────────────
+  var ctr = map ? map.getCenter() : null;
+  if (ctr) {
+    var mh   = latLonToMaidenhead(ctr.lat, ctr.lng);
+    var mgrs = latLonToMGRS(ctr.lat, ctr.lng);
+    html += '<div class="sec-h" style="margin-top:16px">Grid Reference (Map Center)</div>';
+    html += '<div class="result-box" style="display:grid;grid-template-columns:1fr 1fr;gap:5px 16px;padding:10px 12px">';
+    html += '<div class="dk">MAIDENHEAD</div><div class="dv" style="font-family:monospace">' + htmlEscape(mh) + '</div>';
+    html += '<div class="dk">MGRS</div><div class="dv" style="font-family:monospace;font-size:11px">' + htmlEscape(mgrs) + '</div>';
+    html += '<div class="dk">LAT/LON</div><div class="dv" style="font-family:monospace">' + ctr.lat.toFixed(5) + ', ' + ctr.lng.toFixed(5) + '</div>';
+    html += '</div>';
+    if (cachedDeclination !== null) {
+      html += '<div class="result-box" style="margin-top:6px;padding:8px 12px;font-size:13px">';
+      html += '&#129518; Mag Declination: <b style="color:var(--orange)">' + (cachedDeclination>0?'+':'') + cachedDeclination + '&deg;</b></div>';
+    } else {
+      html += '<button class="sbtn sbtn-full" style="margin-top:6px" '
+        + 'onclick="fetchMagneticDeclination(map.getCenter().lat,map.getCenter().lng)'
+        + '.then(function(d){if(d!==null)renderTabInto(\'tools\',\'tcont\')})">&#129518; Get Magnetic Declination</button>';
+    }
+  }
+  html += '<div class="sec-h" style="margin-top:16px">Session Notes</div>';
+  html += '<textarea id="session-notes-ta" style="width:100%;min-height:80px;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box" placeholder="Type notes here..." oninput="sessionNotes=this.value;saveCurrentOperation()">' + htmlEscape(sessionNotes) + '</textarea>';
+  html += '<button class="sbtn sbtn-full" style="margin-top:8px" onclick="printMapView()">&#128438; Print Map View</button>';
+  html += '<div class="sec-h" style="margin-top:16px">Keyboard Shortcuts</div>';
+  html += '<div class="result-box" style="font-size:12px;font-family:monospace;line-height:2"><b>F</b> Fullscreen &nbsp; <b>R</b> Radar &nbsp; <b>D</b> Theme &nbsp; <b>Esc</b> Close<br><b>1</b> APRS &nbsp; <b>2</b> Weather &nbsp; <b>3</b> Messages &nbsp; <b>4</b> SAR Ops</div>';
+  return html;
+racker v6.2.0 - build 20260705 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1023,6 +1050,9 @@ body.light #coord-display{background:rgba(255,255,255,.92)}
   <div class="logo">APRS<span>TRACK</span></div>
   <div class="tagline">Ham Radio &amp; SAR &middot; Robert W Donze - W7CTY</div>
   <button class="hbtn" id="sar-btn" onclick="toggleSAR()">&#128308; SAR</button>
+  <button class="hbtn" id="rptr-btn" onclick="toggleRepeaterOverlay()">&#128251; Rptr</button>
+  <button class="hbtn" id="wl-btn"   onclick="toggleWinlinkOverlay()">&#9993; WL</button>
+  <button class="hbtn" id="flood-btn" onclick="toggleFloodOverlay()">&#127966; Flood</button>
   <button class="hbtn" id="thbtn" onclick="toggleTheme()">&#9728;&#65039; Light</button>
 </div>
 <div id="sbar">
@@ -1157,9 +1187,16 @@ var map, myMark, baseTileLayer;
 var baseLayers = null;
 var currentBaseLayerName = 'natgeo';
 var markers  = {};
-var stations = [];
-var tracked  = '';
-var trail    = [];
+var stations    = [];
+var tracked     = '';
+var trail       = [];
+var historyData = [];   // path history for playback
+var historyLayer= null; // history polyline layer
+var historyTimer= null; // playback animation timer
+var historyIdx  = 0;    // current playback position
+var phgLayer    = null; // PHG coverage circles
+var wxStations  = {};   // WX station data cache
+var drLayer     = null; // dead reckoning marker
 var trailLayer = null;    // live Leaflet polyline drawn while tracking
 var areaLoadTimer = null; // interval that populates area beacons when idle
 var showLbl  = true;
@@ -1178,6 +1215,135 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAABSCAMAAAAhFXfZAAAC91BMVEVMaXEzeak2f7I4g7g3g7cua5gzeKg8hJo3grY4g7c3grU0gLI2frE0daAubJc2gbQwd6QzeKk2gLMtd5sxdKIua5g1frA2f7IydaM0e6w2fq41fK01eqo3grgubJgta5cxdKI1f7AydaQydaMxc6EubJgvbJkwcZ4ubZkwcJwubZgubJcydqUydKIxapgubJctbJcubZcubJcvbJYubJcvbZkubJctbJctbZcubJg2f7AubJcrbZcubJcubJcua5g3grY0fq8ubJcubJdEkdEwhsw6i88vhswuhcsuhMtBjMgthMsrg8srgss6is8qgcs8i9A9iMYtg8spgcoogMo7hcMngMonf8olfso4gr8kfck5iM8jfMk4iM8he8k1fro7itAgesk2hs8eecgzfLcofssdeMg0hc4cd8g2hcsxeLQbdsgZdcgxeLImfcszhM0vda4xgckzhM4xg84wf8Yxgs4udKsvfcQucqhUndROmdM1fK0wcZ8vb5w0eqpQm9MzeKhXoNVcpdYydKNWn9VZotVKltJFjsIwcJ1Rms9OlslLmtH///8+kc9epdYzd6dbo9VHkMM2f7FHmNBClM8ydqVcpNY9hro3gLM9hLczealQmcw3fa46f7A8gLMxc6I3eagyc6FIldJMl9JSnNRSntNNl9JPnNJFi75UnM9ZodVKksg8kM45jc09e6ZHltFBk883gbRBh7pDk9EwcaBzn784g7dKkcY2i81Om9M7j85Llc81is09g7Q4grY/j9A0eqxKmdFFltBEjcXf6fFImdBCiLxJl9FGlNFBi78yiMxVndEvbpo6js74+vx+psPP3+o/ks5HkcpGmNCjwdZCkNDM3ehYoNJEls+lxNkxh8xHks0+jdC1zd5Lg6r+/v/H2ufz9/o3jM3t8/edvdM/k89Th61OiLBSjbZklbaTt9BfptdjmL1AicBHj8hGk9FAgK1dkLNTjLRekrdClc/k7fM0icy0y9tgp9c4jc2NtM9Dlc8zicxeXZn3AAAAQ3RSTlMAHDdTb4yPA+LtnEQmC4L2EmHqB7XA0d0sr478x4/Yd5i1zOfyPkf1sLVq4Nh3FvjxopQ2/STNuFzUwFIwxKaejILpIBEV9wAABhVJREFUeF6s1NdyFEcYBeBeoQIhRAkLlRDGrhIgY3BJL8CVeKzuyXFzzjkn5ZxzzuScg3PO8cKzu70JkO0LfxdTU//pM9vTu7Xgf6KqOVTb9X7toRrVEfBf1HTVjZccrT/2by1VV928Yty9ZbVuucdz90frG8DBjl9pVApbOstvmMuvVgaNXSfAAd6pGxpy6yxf5ph43pS/4f3uoaGm2rdu72S9xzOvMymkZFq/ptDrk90mhW7e4zl7HLzhxGWPR20xmSxJ/VqldG5m9XhaVOA1DadsNh3Pu5L2N6QtPO/32JpqQBVVk20oy/Pi2s23WEvyfHbe1thadVQttvm7Llf65gGmXK67XtupyoM7HQhmXdLS8oGWJNeOJ3C5fG5XCEJnkez3/oFdsvgJ4l2ANZwhrJKk/7OSXa+3Vw2WJMlKnGkobouYk6T0TyX30klOUnTD9HJ5qpckL3EW/w4XF3Xd0FGywXUrstrclVsqz5Pd/sXFYyDnPdrLcQODmGOK47IZb4CmibmMn+MYRzFZ5jg33ZL/EJrWcszHmANy3ARBK/IXtciJy8VsitPSdE3uuHxzougojcUdr8/32atnz/ev3f/K5wtpxUTpcaI45zusVDpYtZi+jg0oU9b3x74h7+n9ABvYEZeKaVq0sh0AtLKsFtqNBdeT0MrSzwwlq9+x6xAO4tgOtSzbCjrNQQiNvQUbUEubvzBUeGw26yDCsRHCoLkTHDa7IdOLIThs/gHvChszh2CimE8peRs47cxANI0lYNB5y1DljpOF0IhzBDPOZnDOqYYbeGKECbPzWnXludPphw5c2YBq5zlwXphIbO4VDCZ0gnPfUO1TwZoYwAs2ExPCedAu9DAjfQUjzITQb3jNj0KG2Sgt6BHaQUdYzWz+XmBktOHwanXjaSTcwwziBcuMOtwBmqPrTOxFQR/DRKKPqyur0aiW6cULYsx6tBm0jXpR/AUWR6HRq9WVW6MRhIq5jLyjbaCTDCijyYJNpCajdyobP/eTw0iexBAKkJ3gA5KcQb2zBXsIBckn+xVv8jkZSaEFHE+jFEleAEfayRU0MouNoBmB/L50Ai/HSLIHxcrpCvnhSQAuakKp2C/YbCylJjXRVy/z3+Kv/RrNcCo+WUzlVEhzKffnTQnxeN9fWF88fiNCUdSTsaufaChKWInHeysygfpIqagoakW+vV20J8uyl6TyNKEZWV4oRSPyCkWpgOLSbkCObT8o2r6tlG58HQquf6O0v50tB7JM7F4EORd2dx/K0w/KHsVkLPaoYrwgP/y7krr3SSMA4zj+OBgmjYkxcdIJQyQRKgg2viX9Hddi9UBb29LrKR7CVVEEEXWojUkXNyfTNDE14W9gbHJNuhjDettN3ZvbOvdOqCD3Jp/9l+/wJE+9PkYGjx/fqkys3S2rMozM/o2106rfMUINo6hVqz+eu/hd1c4xTg0TAfy5kV+4UG6+IthHTU9woWmxuKNbTfuCSfovBCxq7EtHqvYL4Sm6F8GVxsSXHMQ07TOi1DKtZxjWaaIyi4CXWjxPccUw8WVbMYY5wxC1mzEyXMJWkllpRloi+Kkoq69sxBTlElF6aAxYUbjXNlhlDZilDnM4U5SlN5biRsRHnbx3mbeWjEh4mEyiuJDl5XcWVmX5GvNkFgLWZM5qwsop4/AWfLhU1cR7k1VVvcYCWRkOI6Xy5gmnphCYIkvzuNYzHzosq2oNk2RtSs8khfUOfHIDgR6ysYBaMpl4uEgk2U/oJTs9AaTSwma7dT69geAE2ZpEjUsn2ieJNHeKfrI3EcAGJ2ZaNgVuC8EBctCLc57P5u5led6IOBkIYkuQMrmmjChs4VkfOerHqSBkPzZlhe06RslZ3zMjk2sscqKwY0RcjKK+LWbzd7KiHhkncs/siFJ+V5eXxD34B8nVuJEpGJNmxN2gH3vSvp7J70tF+D1Ej8qUJD1TkErAND2GZwTFg/LubvmgiBG3SOvdlsqFQrkEzJCL1rstlnVFROixZoDDSuXQFHESwVGlcuQcMb/b42NgjLowh5MTDFE3vNB5qStRIErdCQEh6pLPR92anSUb/wAIhldAaDMpGgAAAABJRU5ErkJggg==',
   shadowUrl:     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACkAAAApCAQAAAACach9AAACMUlEQVR4Ae3ShY7jQBAE0Aoz/f9/HTMzhg1zrdKUrJbdx+Kd2nD8VNudfsL/Th///dyQN2TH6f3y/BGpC379rV+S+qqetBOxImNQXL8JCAr2V4iMQXHGNJxeCfZXhSRBcQMfvkOWUdtfzlLgAENmZDcmo2TVmt8OSM2eXxBp3DjHSMFutqS7SbmemzBiR+xpKCNUIRkdkkYxhAkyGoBvyQFEJEefwSmmvBfJuJ6aKqKWnAkvGZOaZXTUgFqYULWNSHUckZuR1HIIimUExutRxwzOLROIG4vKmCKQt364mIlhSyzAf1m9lHZHJZrlAOMMztRRiKimp/rpdJDc9Awry5xTZCte7FHtuS8wJgeYGrex28xNTd086Dik7vUMscQOa8y4DoGtCCSkAKlNwpgNtphjrC6MIHUkR6YWxxs6Sc5xqn222mmCRFzIt8lEdKx+ikCtg91qS2WpwVfBelJCiQJwvzixfI9cxZQWgiSJelKnwBElKYtDOb2MFbhmUigbReQBV0Cg4+qMXSxXSyGUn4UbF8l+7qdSGnTC0XLCmahIgUHLhLOhpVCtw4CzYXvLQWQbJNmxoCsOKAxSgBJno75avolkRw8iIAFcsdc02e9iyCd8tHwmeSSoKTowIgvscSGZUOA7PuCN5b2BX9mQM7S0wYhMNU74zgsPBj3HU7wguAfnxxjFQGBE6pwN+GjME9zHY7zGp8wVxMShYX9NXvEWD3HbwJf4giO4CFIQxXScH1/TM+04kkBiAAAAAElFTkSuQmCC',
 });
+
+// ── APRS Station History Playback ────────────────────────────────────
+async function loadStationHistory(callsign) {
+  if (!callsign) return;
+  try {
+    var entries = await aprsGet({ name: callsign, what: 'loc', howmany: 100 });
+    if (!entries.length) { toast('No history found for ' + callsign); return; }
+    historyData = entries.filter(function(e){ return e.lat && e.lng; })
+      .sort(function(a,b){ return (a.lasttime||0) - (b.lasttime||0); });
+    if (historyData.length < 2) { toast('Not enough history points'); return; }
+    historyIdx = 0;
+    if (historyLayer) { map.removeLayer(historyLayer); historyLayer = null; }
+    if (historyTimer) { clearInterval(historyTimer); historyTimer = null; }
+    // Draw full path as polyline
+    var latlngs = historyData.map(function(e){ return [parseFloat(e.lat), parseFloat(e.lng)]; });
+    historyLayer = L.layerGroup();
+    L.polyline(latlngs, { color:'#facc15', weight:2, opacity:0.7, dashArray:'4,4' }).addTo(historyLayer);
+    // Animate marker along path
+    var marker = L.circleMarker(latlngs[0], { radius:7, color:'#facc15', fillColor:'#facc15', fillOpacity:0.9 });
+    marker.addTo(historyLayer);
+    historyLayer.addTo(map);
+    map.fitBounds(L.latLngBounds(latlngs), { padding:[30,30] });
+    toast('Playing ' + historyData.length + ' points for ' + callsign);
+    historyTimer = setInterval(function() {
+      historyIdx++;
+      if (historyIdx >= historyData.length) {
+        clearInterval(historyTimer); historyTimer = null;
+        toast('History playback complete');
+        return;
+      }
+      var pt = latlngs[historyIdx];
+      marker.setLatLng(pt);
+      var e = historyData[historyIdx];
+      var t = e.lasttime ? new Date(e.lasttime * 1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+      marker.bindTooltip(callsign + (t ? ' @ ' + t : ''), { permanent:false });
+    }, 800);
+  } catch(err) { toast('History error: ' + err.message); }
+}
+
+function stopHistoryPlayback() {
+  if (historyTimer) { clearInterval(historyTimer); historyTimer = null; }
+  if (historyLayer) { map.removeLayer(historyLayer); historyLayer = null; }
+  historyData = []; historyIdx = 0;
+}
+
+// ── PHG Coverage Circles ─────────────────────────────────────────────
+function parsePHG(comment) {
+  var m = comment && comment.match(/PHG(\d)(\d)(\d)(\d)/);
+  if (!m) return null;
+  var power  = [0,1,4,9,16,25,36,49,64,81][parseInt(m[1])] || 0; // watts
+  var height = Math.pow(2, parseInt(m[2])) * 10;                   // feet
+  var gain   = Math.pow(10, parseInt(m[3]) / 10);                  // dBd linear
+  var dir    = parseInt(m[4]) * 45;                                 // degrees
+  // Range in miles: sqrt(2 * height * sqrt(power * gain / 10))
+  var rangeMi = Math.sqrt(2 * height * Math.sqrt(power * gain / 10));
+  return { rangeMi: rangeMi, power: power, height: height, gain: parseInt(m[3]), dir: dir };
+}
+
+function togglePHGCircles() {
+  if (phgLayer) { map.removeLayer(phgLayer); phgLayer = null; toast('PHG circles off'); return; }
+  phgLayer = L.layerGroup();
+  var count = 0;
+  stations.forEach(function(s) {
+    var phg = parsePHG(s.comment || '');
+    if (!phg || !s.lat || !s.lng) return;
+    var radiusM = phg.rangeMi * 1609.34;
+    L.circle([parseFloat(s.lat), parseFloat(s.lng)], {
+      radius: radiusM, color:'#a78bfa', fillColor:'#a78bfa',
+      fillOpacity: 0.05, weight: 1.5, dashArray:'5,5'
+    }).bindTooltip(htmlEscape(s.name) + ' PHG: ' + Math.round(phg.rangeMi) + ' mi range, ' + phg.power + 'W, ' + phg.height + 'ft', { sticky:true })
+      .addTo(phgLayer);
+    count++;
+  });
+  if (!count) { phgLayer = null; toast('No PHG data in current stations'); return; }
+  phgLayer.addTo(map);
+  toast('Showing ' + count + ' PHG coverage circles');
+}
+
+// ── Dead Reckoning ───────────────────────────────────────────────────
+function showDeadReckoning(station) {
+  if (!station || !station.lat || !station.lng) return;
+  var speed  = parseFloat(station.speed  || 0); // knots
+  var course = parseFloat(station.course || 0); // degrees
+  var lastT  = parseInt(station.lasttime || 0);
+  if (speed < 1 || !lastT) { toast('No speed/course data for dead reckoning'); return; }
+  var ageMin = (Date.now() / 1000 - lastT) / 60;
+  if (ageMin > 120) { toast('Last position too old for dead reckoning (>' + Math.round(ageMin) + ' min)'); return; }
+  var speedMps = speed * 0.514444; // knots to m/s
+  var distM    = speedMps * ageMin * 60;
+  var rad      = course * Math.PI / 180;
+  var dLat     = (distM / 111111) * Math.cos(rad);
+  var dLon     = (distM / (111111 * Math.cos(parseFloat(station.lat) * Math.PI / 180))) * Math.sin(rad);
+  var predLat  = parseFloat(station.lat) + dLat;
+  var predLon  = parseFloat(station.lng) + dLon;
+  if (drLayer) { map.removeLayer(drLayer); drLayer = null; }
+  drLayer = L.layerGroup();
+  L.polyline([[parseFloat(station.lat), parseFloat(station.lng)], [predLat, predLon]],
+    { color:'#fb923c', weight:2, dashArray:'6,4', opacity:0.8 }).addTo(drLayer);
+  L.circleMarker([predLat, predLon], { radius:8, color:'#fb923c', fillColor:'#fb923c', fillOpacity:0.6 })
+    .bindTooltip('DR: ' + htmlEscape(station.name) + '<br>' + Math.round(ageMin) + ' min, ' + Math.round(speed) + ' kn @ ' + Math.round(course) + '°', { permanent:true })
+    .addTo(drLayer);
+  drLayer.addTo(map);
+  map.panTo([predLat, predLon]);
+}
+
+// ── Heard List ───────────────────────────────────────────────────────
+function heardListHTML() {
+  if (!stations.length) return '<div class="empty">No stations loaded</div>';
+  var sorted = stations.slice().sort(function(a,b){ return (b.lasttime||0) - (a.lasttime||0); });
+  var rows = sorted.slice(0, 50).map(function(s) {
+    var age = s.lasttime ? ago(Date.now()/1000 - s.lasttime) : '?';
+    var path = s.path || '';
+    return '<div class="result-box" style="padding:6px 10px;cursor:pointer" onclick="focusStation(' + JSON.stringify(s.name) + ')">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<span style="font-family:monospace;font-weight:600;font-size:13px">' + htmlEscape(s.name) + '</span>'
+      + '<span style="font-size:11px;color:var(--muted)">' + age + '</span>'
+      + '</div>'
+      + (path ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">via ' + htmlEscape(path) + '</div>' : '')
+      + '</div>';
+  }).join('');
+  return '<div class="sec-h">Heard List (' + Math.min(stations.length, 50) + '/' + stations.length + ')</div>' + rows;
+}
+
+function focusStation(name) {
+  var s = stations.find(function(st){ return st.name === name; });
+  if (!s) return;
+  map.setView([parseFloat(s.lat), parseFloat(s.lng)], 13);
+  openDet(s);
+}
 
 function initMap() {
   map = L.map('map', { center:[39.7684,-86.1581], zoom:7, zoomControl:false });
@@ -1573,10 +1739,168 @@ function detHTML(st) {
     + '<div class="dk">LAST HEARD</div><div class="dv">' + ago(st.lasttime) + '</div>'
     + '<div class="dk">PATH</div><div class="dv" style="word-break:break-all">' + (st.path ? htmlEscape(st.path) : '--') + '</div>'
     + '</div>'
-    + '<div style="margin-top:10px;font-size:13px"><a href="https://aprs.fi/#!call=' + encodeURIComponent(st.name) + '" target="_blank" style="color:var(--cyan);text-decoration:none">Open on aprs.fi &rarr;</a></div>';
+    + '<div style="margin-top:10px;font-size:13px"><a href="https://aprs.fi/#!call=' + encodeURIComponent(st.name) + '" target="_blank" style="color:var(--cyan);text-decoration:none">Open on aprs.fi &rarr;</a></div>'
+    + '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">'
+    + '<button class="sbtn" onclick="loadStationHistory(' + JSON.stringify(st.name) + ')">&#9654; History</button>'
+    + (isMoving ? '<button class="sbtn" onclick="showDeadReckoning(currentDetSt)">&#127961; Dead Reckoning</button>' : '')
+    + ((st.comment && st.comment.indexOf('PHG') !== -1) ? '<button class="sbtn" onclick="togglePHGCircles()">&#128308; PHG</button>' : '')
+    + '</div>';
 }
 
+// ── Lost Person Behavior Profiles ───────────────────────────────────
+function applyLpbProfile(profileName) {
+  activeLpbProfile = lpbProfiles.find(function(p){ return p.name === profileName; }) || null;
+  if (lpbLayer) { map.removeLayer(lpbLayer); lpbLayer = null; }
+  if (!activeLpbProfile) { renderTabInto('subjects','tcont'); return; }
+  // Draw search radius ring around each subject's last known position
+  lpbLayer = L.layerGroup();
+  var drawn = 0;
+  subjects.forEach(function(s) {
+    var lat = s.lastLat || null, lon = s.lastLon || null;
+    if (!lat && !lon) return;
+    var radiusM = activeLpbProfile.radMi * 1609.34;
+    L.circle([lat, lon], {
+      radius: radiusM, color:'#f97316', fillColor:'#f97316',
+      fillOpacity: 0.06, weight: 2, dashArray: '6,4'
+    }).bindTooltip(htmlEscape(s.name) + ' — ' + htmlEscape(activeLpbProfile.name) + ' (' + activeLpbProfile.radMi + ' mi)', { sticky:true })
+      .addTo(lpbLayer);
+    drawn++;
+  });
+  if (drawn) lpbLayer.addTo(map);
+  renderTabInto('subjects','tcont');
+}
+
+// ── Clue Logging ─────────────────────────────────────────────────────
+function addClue(type, description, lat, lon) {
+  if (!lat || !lon) { toast('No location — set map center first'); return; }
+  var clue = {
+    id: uid(), type: type || 'Physical', description: description || '',
+    lat: lat, lon: lon, time: Date.now(), reported_by: ''
+  };
+  clueLog.push(clue);
+  // Place marker on map
+  if (!window.clueMarkerLayer) {
+    window.clueMarkerLayer = L.layerGroup().addTo(map);
+  }
+  L.circleMarker([lat, lon], { radius:6, color:'#f59e0b', fillColor:'#f59e0b', fillOpacity:0.8 })
+    .bindTooltip('Clue: ' + htmlEscape(type) + (description ? ' — ' + htmlEscape(description.substring(0,40)) : ''), { sticky:true })
+    .addTo(window.clueMarkerLayer);
+  logEvent('Clue logged: ' + type + (description ? ' — ' + description : '') + ' at ' + lat.toFixed(5) + ',' + lon.toFixed(5));
+  saveCurrentOperation();
+  renderTabInto('search','tcont');
+  toast('Clue logged');
+}
+
+function removeClue(id) {
+  clueLog = clueLog.filter(function(c){ return c.id !== id; });
+  saveCurrentOperation();
+  renderTabInto('search','tcont');
+}
+
+// ── Hasty Team Assignment ─────────────────────────────────────────────
+function assignRosterToSector(memberId, sectorId) {
+  var m = roster.find(function(r){ return r.id === memberId; });
+  var s = sectors.find(function(s){ return s.id === sectorId; });
+  if (!m || !s) return;
+  m.sector = sectorId;
+  logEvent('Assigned ' + m.name + ' to sector ' + s.name);
+  saveCurrentOperation();
+  renderTabInto('roster','tcont');
+}
+
+// ── POA/POD Calculator ───────────────────────────────────────────────
+function calcSectorPOD(sectorId, effortHours, searchers) {
+  var s = sectors.find(function(s){ return s.id === sectorId; });
+  if (!s) return;
+  var areaSqMi = sectorAreaKm2(s.points) * 0.386102;
+  // ESW estimate based on terrain (default 50m = 0.031mi)
+  var eswMi = 0.031;
+  var coverageW = searchers * effortHours * (2.5 / 1) * eswMi / areaSqMi;
+  var pod = 1 - Math.exp(-coverageW);
+  s.pod = Math.round(pod * 100);
+  s.effortHours = effortHours;
+  s.searchers = searchers;
+  logEvent('POD for ' + s.name + ': ' + s.pod + '% (' + effortHours + 'h, ' + searchers + ' searchers)');
+  saveCurrentOperation();
+  renderTabInto('search','tcont');
+  return s.pod;
+}
+
+// ── ICS Form Generation ───────────────────────────────────────────────
+function generateICS204() {
+  var lines = ['ICS 204 — ASSIGNMENT LIST', ''];
+  lines.push('Incident: ' + (currentOpName || 'Unknown'));
+  lines.push('Date: ' + new Date().toLocaleDateString());
+  lines.push('');
+  lines.push('OPERATIONS SECTION:');
+  sectors.forEach(function(s) {
+    var assigned = roster.filter(function(m){ return m.sector === s.id; });
+    lines.push('  Sector: ' + s.name + ' [' + s.status + ']');
+    if (assigned.length) {
+      assigned.forEach(function(m){
+        lines.push('    - ' + m.name + (m.role ? ' (' + m.role + ')' : '') + (m.callsign ? ' [' + m.callsign + ']' : ''));
+      });
+    } else {
+      lines.push('    (No team assigned)');
+    }
+    if (s.pod !== undefined) lines.push('    POD: ' + s.pod + '%');
+    lines.push('');
+  });
+  downloadTextFile('ICS-204-' + (currentOpName||'operation').replace(/\s+/g,'-') + '.txt', lines.join('\n'));
+  toast('ICS 204 downloaded');
+}
+
+function generateICS209() {
+  var lines = ['ICS 209 — INCIDENT STATUS SUMMARY', ''];
+  lines.push('Incident: ' + (currentOpName || 'Unknown'));
+  lines.push('Date/Time: ' + new Date().toLocaleString());
+  lines.push('');
+  lines.push('SUBJECTS:');
+  subjects.forEach(function(s){
+    lines.push('  ' + s.name + ' — Status: ' + s.status + (s.callsign ? ' [APRS: ' + s.callsign + ']' : ''));
+    if (s.notes) lines.push('    Notes: ' + s.notes);
+  });
+  lines.push('');
+  lines.push('SEARCH SECTORS: ' + sectors.length);
+  var completed = sectors.filter(function(s){ return s.status === 'completed'; }).length;
+  lines.push('  Completed: ' + completed + ' / ' + sectors.length);
+  lines.push('');
+  lines.push('PERSONNEL: ' + roster.length + ' team members');
+  lines.push('');
+  lines.push('CLUES LOGGED: ' + clueLog.length);
+  clueLog.forEach(function(c){
+    lines.push('  [' + new Date(c.time).toLocaleString() + '] ' + c.type + ': ' + (c.description||'(no description)'));
+  });
+  lines.push('');
+  lines.push('LOG SUMMARY:');
+  incidentLog.slice(-20).forEach(function(e){ lines.push('  ' + e.time + ' — ' + e.text); });
+  downloadTextFile('ICS-209-' + (currentOpName||'operation').replace(/\s+/g,'-') + '.txt', lines.join('\n'));
+  toast('ICS 209 downloaded');
+}
+
+// ── Debriefing Checklist ──────────────────────────────────────────────
+var DEBRIEF_ITEMS = [
+  'All personnel accounted for and signed out',
+  'Equipment inventoried and returned',
+  'Search sectors documented with coverage achieved',
+  'Clues photographed and logged in evidence system',
+  'Team debrief completed — notable observations recorded',
+  'ICS 214 (activity log) completed per team',
+  'Maps marked with areas searched',
+  'Medical checks completed for all personnel',
+  'Vehicles inspected and fuel logged',
+  'IC notified of team completion'
+];
+var debriefChecked = {};
+
+function toggleDebrief(idx) {
+  debriefChecked[idx] = !debriefChecked[idx];
+  renderTabInto('sarops','tcont');
+}
+
+var currentDetSt = null;
 function openDet(st) {
+  currentDetSt = st;
   selSt = st;
   var el = document.getElementById('det');
   el.innerHTML = '<button id="dclose" onclick="closeDet()">&#x2715;</button>' + detHTML(st);
@@ -1750,6 +2074,12 @@ function stationsHTML() {
       + '<div class="cm"><span>' + ago(st.lasttime) + '</span>' + (spd && parseFloat(spd)>0 ? '<span>'+spd+' mph</span>' : '') + '</div>'
       + '</div>';
   }).join('');
+  // Heard list + PHG button
+  h += '<div class="frow" style="margin-top:10px;gap:6px">';
+  h += '<button class="sbtn" onclick="renderTabInto(\'heardlist\',\'tcont\')" style="flex:1">&#128225; Heard List</button>';
+  h += '<button class="sbtn ' + (phgLayer ? 'sbtn-primary' : '') + '" onclick="togglePHGCircles()" style="flex:1">&#128308; PHG</button>';
+  h += '</div>';
+  return h;
 }
 
 function trailHTML() {
@@ -1835,6 +2165,48 @@ function swMob(t) {
   else showBs(sarTabHTML2(t));
 }
 
+// ── Keyboard Shortcuts ────────────────────────────────────────────
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  switch(e.key) {
+    case 'f': case 'F': toggleMapFullscreen(); break;
+    case 'r': case 'R': if (!e.ctrlKey) toggleRadarOverlay(); break;
+    case 'd': case 'D': toggleTheme(); break;
+    case 'Escape': if (document.body.classList.contains('map-fs')) toggleMapFullscreen();
+                   else closeDet(); break;
+    case '1': swTab('stations'); break;
+    case '2': swTab('weather');  break;
+    case '3': swTab('msg');      break;
+    case '4': swTab('sarops');   break;
+  }
+});
+
+// ── Night mode auto-switch by sunrise/sunset ────────────────────────
+var autoThemeEnabled = false;
+function checkAutoTheme() {
+  if (!autoThemeEnabled || !weatherData || !weatherData.daily) return;
+  var now   = Date.now();
+  var sr    = weatherData.daily.sunrise && weatherData.daily.sunrise[0] ? new Date(weatherData.daily.sunrise[0]).getTime() : null;
+  var ss    = weatherData.daily.sunset  && weatherData.daily.sunset[0]  ? new Date(weatherData.daily.sunset[0]).getTime()  : null;
+  if (!sr || !ss) return;
+  var isDay = now >= sr && now < ss;
+  var isLight = document.body.classList.contains('light');
+  if (isDay && !isLight)  document.body.classList.add('light');
+  if (!isDay && isLight)  document.body.classList.remove('light');
+}
+setInterval(checkAutoTheme, 60000); // check every minute
+
+// ── Print map view ─────────────────────────────────────────────────
+function printMapView() {
+  var style = '<style>body{margin:0}#sidebar,#mtabs,#tabbar,#hdr{display:none!important}#map{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:1!important}</style>';
+  var head = document.head.innerHTML;
+  var w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { toast('Allow popups to print the map'); return; }
+  w.document.write('<html><head>' + head + style + '</head><body>' + document.getElementById('map').outerHTML + '</body></html>');
+  w.document.close();
+  setTimeout(function(){ w.print(); }, 500);
+}
+
 window.addEventListener('load', function() {
   initMap();
   if (typeof initOperations === 'function') initOperations();
@@ -1843,6 +2215,7 @@ window.addEventListener('load', function() {
   setSt('ok', 'Ready');
   startAutoLog();
   setTimeout(autoLogCheckRecovery, 800); // after map is ready
+  loadAlertContacts();
   if (typeof refreshMeshcorePorts === 'function') refreshMeshcorePorts();
   // Start loading area beacons immediately -- triggers a background APRS-IS
   // range scan; if the messaging backend (aprslib) isn't running, this
@@ -1896,6 +2269,7 @@ function currentOpStateBlob() {
     subjects: subjects, sectors: sectors, roster: roster,
     incidentLog: incidentLog, waypoints: waypoints,
     sarMarkers2: sarMarkers2, clueMarkers: clueMarkers,
+    clueLog: clueLog, sessionNotes: sessionNotes,
     searchStartTime: searchStartTime,
     savedAt: Date.now()
   };
@@ -1935,7 +2309,9 @@ function loadOperationData(opId) {
     incidentLog = (blob && blob.incidentLog) || [];
     waypoints = (blob && blob.waypoints) || [];
     sarMarkers2 = (blob && blob.sarMarkers2) || {};
-    clueMarkers = (blob && blob.clueMarkers) || [];
+    clueMarkers  = (blob && blob.clueMarkers)  || [];
+    clueLog      = (blob && blob.clueLog)      || [];
+    sessionNotes = (blob && blob.sessionNotes) || '';
     searchStartTime = (blob && blob.searchStartTime) || null;
   } catch(e) {
     subjects = []; sectors = []; roster = []; incidentLog = [];
@@ -2134,9 +2510,23 @@ function operationsHTML() {
 
 // ── State ────────────────────────────────────────────────
 var subjects   = [];   // {id, name, callsign, color, status, notes, lastLat, lastLon, lastTime}
+var clueLog     = [];   // clue sightings with GPS coords
+var lpbProfiles = [
+  { name: 'Alzheimer / Dementia', radMi: 1.0, behavior: 'Wanders near roads, unlikely to respond to name, may enter structures' },
+  { name: 'Child (1-6)',           radMi: 0.5, behavior: 'Hides from strangers, attracted to water, may go uphill' },
+  { name: 'Child (7-12)',          radMi: 1.5, behavior: 'May travel with peers, attracted to play areas and structures' },
+  { name: 'Despondent',            radMi: 3.0, behavior: 'Avoids trails, may seek seclusion, may leave vehicle' },
+  { name: 'Hiker',                 radMi: 5.0, behavior: 'Stays on trail, may attempt self-rescue, responds to voice' },
+  { name: 'Hunter',                radMi: 6.0, behavior: 'Off-trail, near game habitat, may shelter in place' },
+  { name: 'Mental Illness',        radMi: 2.0, behavior: 'Unpredictable, may avoid searchers, drawn to familiar places' },
+  { name: 'Vehicle / Mechanical',  radMi: 1.0, behavior: 'Found near vehicle, within 1 mi of road, check shelters' }
+];
+var activeLpbProfile = null;
+var lpbLayer         = null;
 var sectors    = [];   // {id, name, status, points:[[lat,lon],...], assignedTo, notes}
 var roster     = [];   // {id, name, callsign, role, status, sector, notes}
 var incidentLog = [];  // {id, time, type:'auto'|'manual', text}
+var sessionNotes  = '';   // freeform notepad saved with operation
 var subjMarkers = {};  // id -> leaflet marker
 var sectorLayers = {}; // id -> leaflet polygon
 var drawMode   = null; // null | 'waypoint' | 'sector' | 'measure'
@@ -2279,6 +2669,70 @@ function runCoordConvert() {
 // ════════════════════════════════════════════════════════
 //  DISTANCE & BEARING
 // ════════════════════════════════════════════════════════
+
+// ── Maidenhead Grid Square ───────────────────────────────────────────
+function latLonToMaidenhead(lat, lon) {
+  lon += 180; lat += 90;
+  var field_lon = String.fromCharCode(65 + Math.floor(lon / 20));
+  var field_lat = String.fromCharCode(65 + Math.floor(lat / 10));
+  var sq_lon    = String(Math.floor((lon % 20) / 2));
+  var sq_lat    = String(Math.floor(lat % 10));
+  var sub_lon   = String.fromCharCode(65 + Math.floor((lon % 2) / (2/24)));
+  var sub_lat   = String.fromCharCode(65 + Math.floor((lat % 1) / (1/24)));
+  return field_lon + field_lat + sq_lon + sq_lat + sub_lon.toLowerCase() + sub_lat.toLowerCase();
+}
+
+// ── MGRS Converter (simplified WGS84 UTM zone) ───────────────────────
+function latLonToMGRS(lat, lon) {
+  // Get UTM zone
+  var zone = Math.floor((lon + 180) / 6) + 1;
+  var band = 'CDEFGHJKLMNPQRSTUVWXX'.charAt(Math.floor((lat + 80) / 8));
+  // Simplified - show UTM zone + band + easting/northing at 1m precision
+  var a = 6378137, f = 1/298.257223563;
+  var b = a * (1 - f);
+  var e2 = (a*a - b*b) / (a*a);
+  var k0 = 0.9996;
+  var lonRad = lon * Math.PI / 180;
+  var latRad = lat * Math.PI / 180;
+  var lon0   = (zone - 1) * 6 - 180 + 3;
+  var lon0Rad = lon0 * Math.PI / 180;
+  var N = a / Math.sqrt(1 - e2 * Math.sin(latRad) * Math.sin(latRad));
+  var T = Math.tan(latRad) * Math.tan(latRad);
+  var C = e2 / (1 - e2) * Math.cos(latRad) * Math.cos(latRad);
+  var A = Math.cos(latRad) * (lonRad - lon0Rad);
+  var M = a * ((1 - e2/4 - 3*e2*e2/64) * latRad
+    - (3*e2/8 + 3*e2*e2/32) * Math.sin(2*latRad)
+    + (15*e2*e2/256) * Math.sin(4*latRad));
+  var easting  = k0 * N * (A + (1-T+C)*A*A*A/6) + 500000;
+  var northing = k0 * (M + N * Math.tan(latRad) * (A*A/2 + (5-T+9*C)*A*A*A*A/24));
+  if (lat < 0) northing += 10000000;
+  // MGRS 100km square ID (simplified GZD)
+  var e100k = Math.floor(easting / 100000) % 8;
+  var n100k = Math.floor(northing / 100000) % 20;
+  var eSq = 'ABCDEFGH'.charAt(e100k);
+  var nSq = (zone % 2 === 0) ? 'FGHJKLMNPQRSTUVABCDE'.charAt(n100k) : 'ABCDEFGHJKLMNPQRSTU'.charAt(n100k % 20);
+  var eRem = Math.floor(easting % 100000).toString().padStart(5,'0');
+  var nRem = Math.floor(northing % 100000).toString().padStart(5,'0');
+  return zone + band + ' ' + eSq + nSq + ' ' + eRem + ' ' + nRem;
+}
+
+// ── Magnetic Declination ─────────────────────────────────────────────
+var cachedDeclination = null;
+var cachedDeclLat = null, cachedDeclLon = null;
+
+async function fetchMagneticDeclination(lat, lon) {
+  if (cachedDeclLat === lat && cachedDeclLon === lon && cachedDeclination !== null) return cachedDeclination;
+  try {
+    var yr = new Date().getFullYear();
+    var r = await fetch('https://www.ngdc.noaa.gov/geomag-web/calculators/calculateDeclination?lat1=' + lat + '&lon1=' + lon + '&resultFormat=json&startYear=' + yr + '&startMonth=1&startDay=1');
+    if (!r.ok) return null;
+    var d = await r.json();
+    var decl = d.result && d.result[0] && d.result[0].declination;
+    cachedDeclination = decl != null ? parseFloat(decl.toFixed(1)) : null;
+    cachedDeclLat = lat; cachedDeclLon = lon;
+    return cachedDeclination;
+  } catch(e) { return null; }
+}
 
 function haversine(lat1, lon1, lat2, lon2) {
   var R = 6371; // km
@@ -3233,6 +3687,49 @@ function triggerLocalAlert() {
   renderTabInto('alert','tcont');
 }
 
+async // ── APRS Alert Messaging ─────────────────────────────────────────────
+function saveAlertContacts() {
+  try { localStorage.setItem('aprsartracker_alert_contacts', JSON.stringify(alertContacts)); } catch(e) {}
+}
+function addAlertContact() {
+  var cs = (document.getElementById('alert-contact-input')||{}).value;
+  if (!cs) { cs = ''; }
+  cs = cs.trim().toUpperCase();
+  if (!cs) { toast('Enter a callsign'); return; }
+  if (alertContacts.indexOf(cs) !== -1) { toast(cs + ' already in list'); return; }
+  alertContacts.push(cs);
+  saveAlertContacts();
+  renderTabInto('alert','tcont');
+  toast(cs + ' added to alert contacts');
+}
+
+function loadAlertContacts() {
+  try {
+    var raw = localStorage.getItem('aprsartracker_alert_contacts');
+    if (raw) alertContacts = JSON.parse(raw);
+  } catch(e) {}
+}
+
+async function sendAprsAlertToContacts(msg) {
+  if (!msgConnected) { console.warn('APRS-IS not connected — alert not sent'); return; }
+  if (!alertContacts.length) return;
+  var truncated = msg.length > 67 ? msg.substring(0, 64) + '...' : msg;
+  var sent = 0, failed = 0;
+  for (var i = 0; i < alertContacts.length; i++) {
+    try {
+      var res = await msgApiCall('/msg/send?to=' + encodeURIComponent(alertContacts[i]) + '&text=' + encodeURIComponent(truncated));
+      if (res && res.result === 'ok') sent++; else failed++;
+    } catch(e) { failed++; }
+  }
+  if (sent) logEvent('APRS alert sent to ' + sent + ' contact(s): ' + truncated.substring(0,60));
+}
+
+function sendTestAprsAlert() {
+  if (!msgConnected) { toast('Connect to APRS-IS in the Messages tab first'); return; }
+  sendAprsAlertToContacts('TEST ALERT from APRSaR Tracker — W7CTY');
+  toast('Test alert sent to ' + alertContacts.length + ' contact(s)');
+}
+
 async function sendTeamPage() {
   var msg = document.getElementById('alert-message').value.trim();
   if (!msg) { toast('Enter a page message'); return; }
@@ -3278,6 +3775,22 @@ function alertHTML() {
   html += '<div class="tool-divider"></div>'
     + '<div style="font-size:11px;color:var(--muted)">Meshtastic paging is not yet available \u2014 the mesh backend only tracks node positions, it doesn\u2019t send messages. A real iOS Critical Alert (wakes a muted phone) isn\u2019t buildable into this desktop app \u2014 it requires a native iOS app and an Apple entitlement granted case-by-case.</div>';
 
+
+
+  // ── APRS Alert Contacts ─────────────────────────────────────────
+  html += '<div class="sec-h" style="margin-top:16px">APRS Alert Contacts</div>';
+  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Callsigns receive APRS-IS messages when NWS alerts fire (requires Messages connection)</div>';
+  alertContacts.forEach(function(cs, i) {
+    html += '<div class="result-box" style="display:flex;align-items:center;gap:8px;padding:6px 10px">';
+    html += '<span style="font-family:monospace;flex:1">' + htmlEscape(cs) + '</span>';
+    html += '<button class="sbtn sbtn-red" style="padding:3px 8px;font-size:11px" onclick="alertContacts.splice(' + i + ',1);saveAlertContacts();renderTabInto(\'alert\',\'tcont\')">Remove</button>';
+    html += '</div>';
+  });
+  html += '<div class="frow" style="margin-top:6px;gap:6px">';
+  html += '<input id="alert-contact-input" class="cs-input" placeholder="Callsign (e.g. W1AW)" style="flex:1" onkeydown="if(event.key===\'Enter\')addAlertContact()">';
+  html += '<button class="sbtn sbtn-primary" onclick="addAlertContact()">+ Add</button>';
+  html += '</div>';
+  html += '<button class="sbtn sbtn-full" style="margin-top:6px" onclick="sendTestAprsAlert()">&#128231; Send Test Alert</button>';
   return html;
 }
 
@@ -3481,6 +3994,20 @@ function subjectsHTML() {
         + '</div></div>';
     });
   }
+
+
+  // ── Lost Person Behavior Profiles ────────────────────────────────
+  html += '<div class="sec-h" style="margin-top:16px">Lost Person Behavior</div>';
+  html += '<select id="lpb-select" style="width:100%;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:13px" onchange="applyLpbProfile(this.value)">';
+  html += '<option value="">Select profile...</option>';
+  lpbProfiles.forEach(function(p) {
+    html += '<option value="' + htmlEscape(p.name) + '"' + (activeLpbProfile && activeLpbProfile.name === p.name ? ' selected' : '') + '>' + htmlEscape(p.name) + ' (' + p.radMi + ' mi)</option>';
+  });
+  html += '</select>';
+  if (activeLpbProfile) {
+    html += '<div class="result-box" style="margin-top:6px;font-size:12px;color:var(--muted)">' + htmlEscape(activeLpbProfile.behavior) + '</div>';
+    html += '<button class="sbtn sbtn-full" style="margin-top:4px" onclick="applyLpbProfile(\'\');renderTabInto(\'subjects\',\'tcont\')">Clear Profile</button>';
+  }
   return html;
 }
 
@@ -3592,6 +4119,29 @@ function searchHTML() {
         + '<button class="sbtn sbtn-red" style="font-size:11px;padding:5px 8px" onclick="removeSector(\'' + s.id + '\')">&#x2715;</button>'
         + '</div></div>';
     });
+  }
+
+
+  // ── Clue Log ──────────────────────────────────────────────────────
+  html += '<div class="sec-h" style="margin-top:16px">Clue Log</div>';
+  html += '<div class="frow" style="gap:6px;margin-bottom:8px">';
+  html += '<input id="clue-desc" class="cs-input" placeholder="Description" style="flex:2">';
+  html += '<select id="clue-type" style="flex:1;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px;color:var(--text);font-size:12px">';
+  html += '<option>Physical</option><option>Track</option><option>Visual</option><option>Scent</option><option>Sound</option><option>Evidence</option>';
+  html += '</select>';
+  html += '</div>';
+  html += '<button class="sbtn sbtn-primary" onclick="var c=document.getElementById(\'clue-desc\');var t=document.getElementById(\'clue-type\');var ctr=map.getCenter();addClue(t.value,c.value,ctr.lat,ctr.lng);c.value=\'\'">+ Log Clue at Map Center</button>';
+  if (clueLog.length) {
+    html += '<div style="margin-top:8px">';
+    clueLog.slice().reverse().forEach(function(c) {
+      html += '<div class="result-box" style="display:flex;align-items:center;gap:8px;padding:6px 10px">';
+      html += '<div style="flex:1"><span style="font-size:12px;font-weight:600">' + htmlEscape(c.type) + '</span>';
+      html += (c.description ? ' — <span style="font-size:12px">' + htmlEscape(c.description) + '</span>' : '');
+      html += '<div style="font-size:10px;color:var(--muted)">' + new Date(c.time).toLocaleString() + ' @ ' + c.lat.toFixed(4) + ',' + c.lon.toFixed(4) + '</div></div>';
+            html += '<button class="sbtn sbtn-red" style="padding:3px 8px;font-size:11px" onclick="removeClue(' + JSON.stringify(c.id) + ')">&times;</button>';
+      html += '</div>';
+    });
+    html += '</div>';
   }
   return html;
 }
@@ -3826,6 +4376,25 @@ function sarOpsHTML() {
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Print a one-page summary of the whole operation, or use the Briefing button on an individual sector card in the SEARCH tab for a per-team assignment sheet.</div>'
     + '<button class="sbtn sbtn-primary sbtn-full" onclick="printOperationSummary()">&#128424; Print Operation Summary</button>';
 
+
+
+  // ── ICS Forms ──────────────────────────────────────────────────────
+  html += '<div class="sec-h" style="margin-top:16px">ICS Forms</div>';
+  html += '<div class="frow" style="gap:6px">';
+  html += '<button class="sbtn" style="flex:1" onclick="generateICS204()">&#128196; ICS-204</button>';
+  html += '<button class="sbtn" style="flex:1" onclick="generateICS209()">&#128196; ICS-209</button>';
+  html += '</div>';
+  // ── Debriefing Checklist ─────────────────────────────────────────
+  html += '<div class="sec-h" style="margin-top:16px">Debriefing Checklist</div>';
+  DEBRIEF_ITEMS.forEach(function(item, i) {
+    var checked = !!debriefChecked[i];
+    html += '<div class="result-box" style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;cursor:pointer" onclick="toggleDebrief(' + i + ')">';
+    html += '<span style="font-size:16px;color:' + (checked ? 'var(--green)' : 'var(--muted)') + '">' + (checked ? '&#9989;' : '&#9744;') + '</span>';
+    html += '<span style="font-size:12px;' + (checked ? 'text-decoration:line-through;color:var(--muted)' : '') + '">' + htmlEscape(item) + '</span>';
+    html += '</div>';
+  });
+  var doneCount = Object.values(debriefChecked).filter(Boolean).length;
+  html += '<div style="font-size:12px;color:var(--muted);margin-top:6px;text-align:center">' + doneCount + '/' + DEBRIEF_ITEMS.length + ' complete</div>';
   return html;
 }
 
@@ -4003,6 +4572,22 @@ function rosterHTML() {
         + '<button class="sbtn sbtn-green" style="font-size:11px;padding:5px 8px" onclick="setRosterStatus(\'' + m.id + '\',\'returned\')">Return</button>'
         + '<button class="sbtn sbtn-red" style="font-size:11px;padding:5px 8px" onclick="removeRosterMember(\'' + m.id + '\')">&#x2715;</button>'
         + '</div></div>';
+    });
+  }
+
+
+  // ── Hasty Team Sector Assignment ────────────────────────────────
+  if (sectors.length && roster.length) {
+    html += '<div class="sec-h" style="margin-top:16px">Sector Assignments</div>';
+    roster.filter(function(m){ return m.callsign; }).forEach(function(m) {
+      html += '<div class="result-box" style="display:flex;align-items:center;gap:8px;padding:6px 10px">';
+      html += '<span style="font-family:monospace;font-size:12px;min-width:80px">' + htmlEscape(m.name) + '</span>';
+      html += '<select style="flex:1;background:var(--card-bg);border:1px solid var(--border);border-radius:5px;padding:4px;color:var(--text);font-size:12px" onchange="assignRosterToSector(\'' + m.id + '\',this.value)">';
+      html += '<option value="">(unassigned)</option>';
+      sectors.forEach(function(s) {
+        html += '<option value="' + htmlEscape(s.id) + '"' + (m.sector === s.id ? ' selected' : '') + '>' + htmlEscape(s.name) + '</option>';
+      });
+      html += '</select></div>';
     });
   }
   return html;
@@ -4243,7 +4828,9 @@ async function setWeatherLocation() {
 // API (NLDN/ENTLN are commercial; GOES GLM is NetCDF, not a REST feed).
 var seenAlertIds     = new Set();    // track already-notified alerts
 var alertPollTimer   = null;         // background polling interval
-var ALERT_POLL_MS    = 5 * 60 * 1000; // poll every 5 minutes
+var ALERT_POLL_MS       = 5 * 60 * 1000;  // poll every 5 minutes
+var WX_REFRESH_MS       = 15 * 60 * 1000; // refresh weather every 15 minutes
+var weatherRefreshTimer = null;
 
 async function loadWxAlerts(lat, lon) {
   wxAlerts = null;
@@ -4266,6 +4853,8 @@ async function loadWxAlerts(lat, lon) {
             '\u26A0\uFE0F ' + (a.event || 'NWS Alert'),
             (a.headline || a.description || '').substring(0, 200)
           );
+          if (typeof playAlertTone === 'function') playAlertTone(false);
+          sendAprsAlertToContacts('\u26A0 NWS ' + (a.severity||'Alert') + ': ' + (a.event||'Alert') + ' — ' + (a.headline||a.description||'Check weather').substring(0,40));
         }
       }
     });
@@ -4273,9 +4862,9 @@ async function loadWxAlerts(lat, lon) {
   if (curTab === 'weather') renderTabInto('weather', 'tcont');
 }
 
+var alertPollingInit = false;
 function startAlertPolling() {
   if (alertPollTimer) return;
-  // Request notification permission on first poll start
   if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
     Notification.requestPermission();
   }
@@ -4284,10 +4873,42 @@ function startAlertPolling() {
     var lon = (weatherLon !== null) ? weatherLon : map.getCenter().lng;
     loadWxAlerts(lat, lon);
   }, ALERT_POLL_MS);
+  // Hook visibility/focus lifecycle once
+  if (!alertPollingInit) {
+    alertPollingInit = true;
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        stopAlertPolling();
+        stopWeatherRefresh();
+      } else {
+        // Resume polling and immediately refresh weather + alerts
+        var lat = (weatherLat !== null) ? weatherLat : map.getCenter().lat;
+        var lon = (weatherLon !== null) ? weatherLon : map.getCenter().lng;
+        if (lat && lon) {
+          loadWeather(lat, lon); // reloads weather, alerts, and restarts timers
+        }
+      }
+    });
+  }
 }
 
 function stopAlertPolling() {
   if (alertPollTimer) { clearInterval(alertPollTimer); alertPollTimer = null; }
+}
+
+function startWeatherRefresh() {
+  if (weatherRefreshTimer) return;
+  weatherRefreshTimer = setInterval(function() {
+    if (document.hidden) return; // skip if app not visible
+    var lat = (weatherLat !== null) ? weatherLat : map.getCenter().lat;
+    var lon = (weatherLon !== null) ? weatherLon : map.getCenter().lng;
+    weatherData = null; nwsForecast = null; nwsHourly = null;
+    loadWeather(lat, lon);
+  }, WX_REFRESH_MS);
+}
+
+function stopWeatherRefresh() {
+  if (weatherRefreshTimer) { clearInterval(weatherRefreshTimer); weatherRefreshTimer = null; }
 }
 
 function alertSeverityColor(s) {
@@ -4296,6 +4917,14 @@ function alertSeverityColor(s) {
 function alertSeverityBg(s) {
   return { Extreme:'#2c0a0a', Severe:'#2c1010', Moderate:'#2c1c08', Minor:'#2c2408' }[s] || '#1a1a1a';
 }
+var expandedAlertIds = new Set();
+
+function toggleAlertExpand(alertKey) {
+  if (expandedAlertIds.has(alertKey)) expandedAlertIds.delete(alertKey);
+  else expandedAlertIds.add(alertKey);
+  if (curTab === 'weather') renderTabInto('weather','tcont');
+}
+
 function wxAlertsHTML(lat, lon) {
   if (wxAlerts === null) {
     loadWxAlerts(lat, lon);
@@ -4307,15 +4936,33 @@ function wxAlertsHTML(lat, lon) {
   return wxAlerts.map(function(a) {
     var isLightning = /thunder|lightning/i.test((a.event||'') + ' ' + (a.headline||''));
     var col = alertSeverityColor(a.severity);
-    var bg = alertSeverityBg(a.severity);
+    var bg  = alertSeverityBg(a.severity);
+    var alertKey = a.id || (a.event + (a.effective||''));
+    var expanded = expandedAlertIds.has(alertKey);
     var expires = a.expires ? new Date(a.expires).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-    return '<div style="border-left:3px solid '+col+';background:'+bg+';padding:8px 10px;border-radius:0 6px 6px 0;margin-bottom:6px">'
+    var out = '<div style="border-left:3px solid '+col+';background:'+bg+';border-radius:0 6px 6px 0;margin-bottom:6px;overflow:hidden">'
+      + '<div onclick="toggleAlertExpand('+JSON.stringify(alertKey)+')" style="padding:8px 10px;cursor:pointer;display:flex;align-items:flex-start;gap:8px">'
+      + '<div style="flex:1">'
       + '<div style="font-size:13px;font-weight:700;color:'+col+'">'+(isLightning?'\u26A1 ':'\u26A0\uFE0F ')+htmlEscape(a.event||'Alert')+'</div>'
-      + (a.headline?'<div style="font-size:12px;color:var(--text);margin-top:3px">'+htmlEscape(a.headline)+'</div>':'')
-      + (expires?'<div style="font-size:11px;color:var(--muted);margin-top:3px">Expires: '+htmlEscape(expires)+'</div>':'')
+      + (a.headline ? '<div style="font-size:12px;color:var(--text);margin-top:3px">'+htmlEscape(a.headline)+'</div>' : '')
+      + (expires    ? '<div style="font-size:11px;color:var(--muted);margin-top:3px">Expires: '+htmlEscape(expires)+'</div>' : '')
+      + '</div>'
+      + '<span style="font-size:11px;color:var(--muted);margin-top:1px">'+(expanded?'&#9660;':'&#9658;')+'</span>'
       + '</div>';
+    if (expanded) {
+      out += '<div style="padding:0 10px 10px;border-top:1px solid rgba(128,128,128,0.2);margin-top:0">';
+      if (a.description) out += '<div style="font-size:11px;color:var(--text);margin-top:8px;line-height:1.5;white-space:pre-wrap">'+htmlEscape(a.description)+'</div>';
+      if (a.instruction) out += '<div style="font-size:12px;font-weight:600;color:'+col+';margin-top:8px">Instructions:</div>'
+        + '<div style="font-size:11px;color:var(--text);margin-top:4px;line-height:1.5;white-space:pre-wrap">'+htmlEscape(a.instruction)+'</div>';
+      if (a.severity) out += '<div style="font-size:11px;color:var(--muted);margin-top:6px">Severity: '+htmlEscape(a.severity)
+        +(a.certainty?' &bull; Certainty: '+htmlEscape(a.certainty):'')+'</div>';
+      out += '</div>';
+    }
+    out += '</div>';
+    return out;
   }).join('');
 }
+
 
 var nwsForecast = null;   // NWS forecast periods
 var nwsHourly   = null;   // NWS hourly periods
@@ -4397,8 +5044,10 @@ async function loadWeather(forceLat, forceLon) {
   } catch(e) { nwsForecast = null; }
 
   if (curTab === 'weather') renderTabInto('weather','tcont');
+  updateMapWxHUD();
   if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
   startAlertPolling();
+  startWeatherRefresh();
 }
 
 function wmoDesc(code) {
@@ -4606,7 +5255,13 @@ function weatherHTML() {
   var hourly = weatherData.hourly;
 
   // Current conditions
-  html += '<div class="sec-h">Current Conditions</div>'
+  var wxAge = weatherData && weatherData.current && weatherData.current.time
+    ? Math.round((Date.now() - new Date(weatherData.current.time).getTime()) / 60000)
+    : null;
+  html += '<div class="sec-h" style="display:flex;justify-content:space-between;align-items:center">'
+    + '<span>Current Conditions</span>'
+    + (wxAge !== null ? '<span style="font-size:10px;font-weight:400;color:var(--muted)">Updated ' + wxAge + ' min ago</span>' : '')
+    + '</div>';
     + '<div class="result-box" style="text-align:center;padding:16px">'
     + '<div style="font-size:36px">' + wmoIcon(cur.weather_code) + '</div>'
     + '<div style="font-size:28px;font-weight:700;color:var(--orange);margin:4px 0">' + Math.round(cur.temperature_2m) + '\u00B0F</div>'
@@ -4624,6 +5279,17 @@ function weatherHTML() {
     + '<div class="result-box"><div class="rk">PRESSURE</div><div class="rv" style="font-size:13px">' + Math.round(cur.pressure_msl) + ' hPa</div></div>'
     + '<div class="result-box"><div class="rk">PRECIP</div><div class="rv" style="font-size:13px">' + cur.precipitation + ' in</div></div>'
     + '</div>';
+  // Sunrise / sunset
+  if (weatherData.daily && weatherData.daily.sunrise && weatherData.daily.sunrise[0]) {
+    var sr = new Date(weatherData.daily.sunrise[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    var ss = new Date(weatherData.daily.sunset[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    html += '<div class="frow" style="margin-top:8px;gap:6px">';
+    html += '<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNRISE</div>'
+      + '<div class="rv" style="font-size:13px">&#127749; ' + sr + '</div></div>';
+    html += '<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNSET</div>'
+      + '<div class="rv" style="font-size:13px">&#127751; ' + ss + '</div></div>';
+    html += '</div>';
+  }
   html += '<div class="sec-h" style="margin-top:12px">Wind</div>';
   html += renderWindRose(cur.wind_speed_10m||0, cur.wind_direction_10m||0, cur.wind_gusts_10m||0);
 
@@ -4635,6 +5301,54 @@ function weatherHTML() {
     + precipBreakdownHTML(hourly);
 
   // 7-day forecast accordion with NWS text forecasts
+  // Hourly forecast graph — next 24 hours
+  if (weatherData.hourly && weatherData.hourly.time) {
+    var now = Date.now();
+    var h24 = [];
+    for (var hi = 0; hi < weatherData.hourly.time.length && h24.length < 24; hi++) {
+      var ht = new Date(weatherData.hourly.time[hi]).getTime();
+      if (ht >= now - 1800000) h24.push(hi); // include current hour
+    }
+    if (h24.length >= 3) {
+      var temps = h24.map(function(i){ return weatherData.hourly.temperature_2m[i] || 0; });
+      var pops  = h24.map(function(i){ return weatherData.hourly.precipitation_probability[i] || 0; });
+      var tMin = Math.min.apply(null, temps) - 5;
+      var tMax = Math.max.apply(null, temps) + 5;
+      var W = 280, H = 70, pad = 4;
+      var tx = function(i){ return pad + i * (W - pad*2) / (h24.length - 1); };
+      var ty = function(t){ return H - pad - (t - tMin) / (tMax - tMin) * (H - pad*2); };
+      // Build SVG polyline for temp
+      var pts = h24.map(function(_, i){ return tx(i) + ',' + ty(temps[i]); }).join(' ');
+      // Build precip bars
+      var bars = h24.map(function(_, i){
+        var bh = pops[i] / 100 * (H - pad*2);
+        return '<rect x="'+(tx(i)-3)+'" y="'+(H-pad-bh)+'" width="6" height="'+bh+'" fill="#38bdf8" opacity="0.3"/>';
+      }).join('');
+      // Hour labels every 6 hours
+      var labels = h24.filter(function(_,i){ return i % 6 === 0; }).map(function(hi2, i){
+        var idx6 = i * 6;
+        var lbl = new Date(weatherData.hourly.time[h24[idx6]]).toLocaleTimeString([],{hour:'numeric'});
+        return '<text x="'+tx(idx6)+'" y="'+(H+10)+'" text-anchor="middle" font-size="8" fill="var(--muted)" font-family="monospace">'+lbl+'</text>';
+      }).join('');
+      html += '<div class="sec-h" style="margin-top:14px">Next 24 Hours</div>';
+      html += '<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:7px;padding:8px 10px 14px;overflow:hidden">';
+      html += '<svg width="100%" viewBox="0 0 '+(W+8)+' '+(H+14)+'" style="display:block">';
+      html += bars;
+      html += '<polyline points="'+pts+'" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linejoin="round"/>';
+      // Temp dots and values every 6 hours
+      h24.forEach(function(_, i){
+        if (i % 6 === 0) {
+          html += '<circle cx="'+tx(i)+'" cy="'+ty(temps[i])+'" r="3" fill="var(--orange)"/>';
+          html += '<text x="'+tx(i)+'" y="'+(ty(temps[i])-5)+'" text-anchor="middle" font-size="8" fill="var(--text)" font-family="monospace">'+Math.round(temps[i])+'°</text>';
+        }
+      });
+      html += labels;
+      html += '</svg>';
+      html += '<div style="font-size:10px;color:var(--muted);margin-top:2px">&#9632; Precip % &nbsp; <span style="color:var(--orange)">&#9472;</span> Temp °F</div>';
+      html += '</div>';
+    }
+  }
+
   html += '<div class="sec-h" style="margin-top:16px">7-Day Forecast <span style="font-size:10px;color:var(--muted);font-weight:400">tap to expand</span></div>';
   for (var i=0; i<daily.time.length; i++) {
     var d = new Date(daily.time[i] + 'T12:00:00');
@@ -4726,13 +5440,50 @@ function weatherHTML() {
   }
 
   html += '<div class="frow" style="margin-top:10px;gap:6px">'
-    + '<button class="sbtn ' + (alertPolysVisible ? 'sbtn-primary' : '') + '" onclick="toggleAlertPolygons()" style="flex:1">⚠️ Alert Zones</button>'
+    + '<button class="sbtn ' + (alertPolysVisible  ? 'sbtn-primary' : '') + '" onclick="toggleAlertPolygons()"  style="flex:1">⚠️ Alert Zones</button>'
+    + '<button class="sbtn ' + (lightningVisible   ? 'sbtn-primary' : '') + '" onclick="toggleLightningOverlay()" style="flex:1">⚡ Lightning</button>'
     + '</div>';
   html += '<button class="sbtn sbtn-cyan sbtn-full" style="margin-top:6px" onclick="weatherData=null;nwsForecast=null;if(typeof wxAlerts!==\'undefined\')wxAlerts=null;loadWeather()">&#8635; Refresh All</button>';
 
   return html;
 }
 
+
+// ── Lightning strike overlay ──────────────────────────────────────────
+var lightningLayer  = null;
+var lightningTimer  = null;
+var lightningVisible = false;
+
+async function loadLightningStrikes() {
+  if (!lightningVisible) return;
+  try {
+    // Blitzortung public tile feed — no API key, free
+    // Uses heatmap tiles updated every ~10 minutes
+    if (!lightningLayer) {
+      lightningLayer = L.tileLayer(
+        'https://tiles.blitzortung.org/6/{z}/{x}/{y}.png',
+        { opacity: 0.7, maxZoom: 19, maxNativeZoom: 8, zIndex: 520,
+          errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' }
+      );
+      lightningLayer.addTo(map);
+    }
+  } catch(e) { console.warn('Lightning overlay failed:', e.message); }
+}
+
+function toggleLightningOverlay() {
+  lightningVisible = !lightningVisible;
+  if (!lightningVisible) {
+    if (lightningLayer) { map.removeLayer(lightningLayer); lightningLayer = null; }
+    if (lightningTimer) { clearInterval(lightningTimer); lightningTimer = null; }
+  } else {
+    loadLightningStrikes();
+    lightningTimer = setInterval(function() {
+      // Bust tile cache every 10 min to get fresh strikes
+      if (lightningLayer) { lightningLayer.setUrl('https://tiles.blitzortung.org/6/{z}/{x}/{y}.png?_t=' + Date.now()); }
+    }, 10 * 60 * 1000);
+  }
+  if (curTab === 'weather') renderTabInto('weather','tcont');
+}
 
 // ── Auto-log / crash recovery ────────────────────────────────────────
 // Saves a snapshot of app state to localStorage every 60s.
@@ -4745,7 +5496,7 @@ function autoLogSave() {
   try {
     var state = {
       ts:           Date.now(),
-      version:      '6.1.12',
+      version:      '6.2.0',
       callsign:     (document.getElementById('callsign') || {}).value || '',
       mapCenter:    map ? [map.getCenter().lat, map.getCenter().lng] : null,
       mapZoom:      map ? map.getZoom() : null,
@@ -4792,7 +5543,12 @@ function autoLogCheckRecovery() {
       radarRefreshInterval = state.radarInterval || 5;
       toggleRadarOverlay();
     }
-    // Log the recovery event
+    // Restore weather location and reload
+    if (state.weatherLat && state.weatherLon) {
+      weatherLat = state.weatherLat;
+      weatherLon = state.weatherLon;
+      if (typeof loadWeather === 'function') setTimeout(loadWeather, 1500);
+    }
     if (typeof logEvent === 'function') {
       logEvent('App recovered from unclean shutdown (last seen ' + Math.round(ageMin) + ' min ago)', 'system');
     }
@@ -4891,6 +5647,109 @@ async function loadAlertPolygons() {
   } catch(e) { console.warn('Alert polygons failed:', e.message); }
 }
 
+// ── Repeater Directory Overlay (RepeaterBook) ────────────────────────
+var repeaterLayer   = null;
+var repeaterVisible = false;
+
+async function loadRepeaterOverlay() {
+  if (!repeaterVisible) return;
+  if (repeaterLayer) { map.removeLayer(repeaterLayer); repeaterLayer = null; }
+  var center = map.getCenter();
+  var zoom   = map.getZoom();
+  if (zoom < 8) { toast('Zoom in more to see repeaters'); return; }
+  try {
+    var r = await fetch(
+      'https://www.repeaterbook.com/api/export.php?country=United%20States&lat=' + center.lat.toFixed(4) +
+      '&lng=' + center.lng.toFixed(4) + '&distance=50&Dunit=m&freq=&band=%25&use=OPEN&status_id=1&format=json'
+    );
+    if (!r.ok) return;
+    var data = await r.json();
+    if (!data.results) return;
+    repeaterLayer = L.layerGroup();
+    data.results.slice(0, 200).forEach(function(rep) {
+      if (!rep.Lat || !rep.Long) return;
+      var freq = rep.Frequency ? parseFloat(rep.Frequency).toFixed(4) + ' MHz' : '';
+      var tone = rep.TSQ ? ' PL ' + rep.TSQ : (rep.CTCSS ? ' PL ' + rep.CTCSS : '');
+      L.circleMarker([parseFloat(rep.Lat), parseFloat(rep.Long)], {
+        radius: 6, color: '#818cf8', fillColor: '#818cf8', fillOpacity: 0.7, weight: 1
+      }).bindTooltip(
+        '<b>' + htmlEscape(rep.Callsign || 'Repeater') + '</b><br>' + freq + tone +
+        (rep.Landmark ? '<br>' + htmlEscape(rep.Landmark) : ''), { sticky: true }
+      ).addTo(repeaterLayer);
+    });
+    repeaterLayer.addTo(map);
+  } catch(e) { console.warn('Repeater overlay failed:', e.message); }
+}
+
+function toggleRepeaterOverlay() {
+  repeaterVisible = !repeaterVisible;
+  if (!repeaterVisible) {
+    if (repeaterLayer) { map.removeLayer(repeaterLayer); repeaterLayer = null; }
+  } else {
+    loadRepeaterOverlay();
+    map.on('moveend', loadRepeaterOverlay);
+  }
+}
+
+// ── Winlink Gateway Overlay ───────────────────────────────────────────
+var winlinkLayer   = null;
+var winlinkVisible = false;
+
+async function loadWinlinkOverlay() {
+  if (!winlinkVisible) return;
+  if (winlinkLayer) { map.removeLayer(winlinkLayer); winlinkLayer = null; }
+  var center = map.getCenter();
+  try {
+    var r = await fetch(
+      'https://api.winlink.org/channel/list?GridSquare=' + latLonToMaidenhead(center.lat, center.lng).substring(0,4) +
+      '&Distance=300&DistanceUnits=km&ServiceCodes=PUBLIC&Key=&format=json'
+    );
+    if (!r.ok) return;
+    var data = await r.json();
+    var channels = data.ResponseBody && data.ResponseBody.Channels;
+    if (!channels || !channels.length) return;
+    winlinkLayer = L.layerGroup();
+    channels.forEach(function(ch) {
+      if (!ch.Latitude || !ch.Longitude) return;
+      L.circleMarker([ch.Latitude, ch.Longitude], {
+        radius: 7, color: '#34d399', fillColor: '#34d399', fillOpacity: 0.7, weight: 1
+      }).bindTooltip(
+        '<b>' + htmlEscape(ch.Callsign || 'Winlink') + '</b><br>' +
+        (ch.Frequency ? (ch.Frequency / 1000).toFixed(3) + ' kHz' : '') +
+        (ch.Mode ? ' ' + htmlEscape(ch.Mode) : ''), { sticky: true }
+      ).addTo(winlinkLayer);
+    });
+    winlinkLayer.addTo(map);
+  } catch(e) { console.warn('Winlink overlay failed:', e.message); }
+}
+
+function toggleWinlinkOverlay() {
+  winlinkVisible = !winlinkVisible;
+  if (!winlinkVisible) {
+    if (winlinkLayer) { map.removeLayer(winlinkLayer); winlinkLayer = null; }
+  } else {
+    loadWinlinkOverlay();
+  }
+}
+
+// ── FEMA Flood Zone Overlay ───────────────────────────────────────────
+var floodLayer   = null;
+var floodVisible = false;
+
+function toggleFloodOverlay() {
+  floodVisible = !floodVisible;
+  if (!floodVisible) {
+    if (floodLayer) { map.removeLayer(floodLayer); floodLayer = null; }
+  } else {
+    floodLayer = L.tileLayer.wms(
+      'https://hazards.fema.gov/gis/nfhl/services/public/NFHL/MapServer/WMSServer',
+      { layers: '28', format: 'image/png', transparent: true, opacity: 0.45, zIndex: 510,
+        attribution: 'Flood zones: FEMA NFHL' }
+    );
+    floodLayer.addTo(map);
+  }
+}
+
 function toggleAlertPolygons() {
   alertPolysVisible = !alertPolysVisible;
   if (!alertPolysVisible) {
@@ -4931,6 +5790,32 @@ function toolsHTML() {
     + '</div>'
     + '<button class="sbtn sbtn-full" style="margin-top:6px" onclick="triggerImportFile()">&#11014; Import GPX/KML File</button>'
     + '<input type="file" id="import-file-input" accept=".gpx,.kml" style="display:none" onchange="handleImportFile(this)"/>';
+
+
+  // ── Grid & Navigation Tools ─────────────────────────────────────
+  var ctr = map ? map.getCenter() : null;
+  if (ctr) {
+    var mh   = latLonToMaidenhead(ctr.lat, ctr.lng);
+    var mgrs = latLonToMGRS(ctr.lat, ctr.lng);
+    html += '<div class="sec-h" style="margin-top:16px">Grid Reference (Map Center)</div>';
+    html += '<div class="result-box" style="display:grid;grid-template-columns:1fr 1fr;gap:5px 16px;padding:10px 12px">';
+    html += '<div class="dk">MAIDENHEAD</div><div class="dv" style="font-family:monospace">' + htmlEscape(mh) + '</div>';
+    html += '<div class="dk">MGRS</div><div class="dv" style="font-family:monospace;font-size:11px">' + htmlEscape(mgrs) + '</div>';
+    html += '<div class="dk">LAT/LON</div><div class="dv" style="font-family:monospace">' + ctr.lat.toFixed(5) + ', ' + ctr.lng.toFixed(5) + '</div>';
+    html += '</div>';
+    if (cachedDeclination !== null) {
+      html += '<div class="result-box" style="margin-top:6px;padding:8px 12px;font-size:13px">';
+      html += '&#129518; Mag Declination: <b style="color:var(--orange)">' + (cachedDeclination>0?'+':'') + cachedDeclination + '&deg;</b></div>';
+    } else {
+      html += '<button class="sbtn sbtn-full" style="margin-top:6px" onclick="fetchMagneticDeclination(map.getCenter().lat,map.getCenter().lng).then(function(d){if(d!==null)renderTabInto(\'tools\',\'tcont\')})">&#129518; Get Magnetic Declination</button>';
+    }
+  }
+  html += '<div class="sec-h" style="margin-top:16px">Session Notes</div>';
+  html += '<textarea id="session-notes-ta" style="width:100%;min-height:80px;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:13px;font-family:monospace;resize:vertical;box-sizing:border-box" placeholder="Type notes here..." oninput="sessionNotes=this.value;saveCurrentOperation()">' + htmlEscape(sessionNotes) + '</textarea>';
+  html += '<button class="sbtn sbtn-full" style="margin-top:8px" onclick="printMapView()">&#128438; Print Map View</button>';
+  html += '<div class="sec-h" style="margin-top:16px">Keyboard Shortcuts</div>';
+  html += '<div class="result-box" style="font-size:12px;font-family:monospace;line-height:2"><b>F</b> Fullscreen &nbsp; <b>R</b> Radar &nbsp; <b>D</b> Theme &nbsp; <b>Esc</b> Close<br><b>1</b> APRS &nbsp; <b>2</b> Weather &nbsp; <b>3</b> Messages &nbsp; <b>4</b> SAR Ops</div>';
+  return html;
 }
 
 // ════════════════════════════════════════════════════════
@@ -5326,6 +6211,7 @@ function offlineHTML() {
 var MSG_API = 'http://127.0.0.1:8733';
 var msgConnected = false;
 var msgCallsign = '';
+var alertContacts = [];   // callsigns for APRS alert messaging
 var msgError = null;
 var msgList = [];
 var msgPollTimer = null;
@@ -5959,7 +6845,7 @@ function applyImportedData(imported, sourceFilename) {
 }
 
 function aboutHTML() {
-  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.1.12';
+  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.0';
   var repoUrl = (typeof window !== 'undefined' && window.APP_REPO_URL) ? window.APP_REPO_URL : 'https://github.com/W7CTY/aprs-tracker';
   return '<div style="text-align:center;padding:8px 4px 16px">'
     + '<div style="font-family:monospace;font-size:22px;font-weight:700;color:var(--orange);letter-spacing:.04em">APRS<span style="color:var(--cyan)">TRACK</span></div>'
@@ -5994,6 +6880,7 @@ function aboutHTML() {
 }
 
 function sarTabHTML2(t) {
+  if (t === 'heardlist')  return heardListHTML();
   if (t === 'operations') return operationsHTML();
   if (t === 'subjects') return subjectsHTML();
   if (t === 'search')   return searchHTML();
