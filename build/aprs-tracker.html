@@ -4801,23 +4801,47 @@ async function setWeatherLocation() {
       && Math.abs(parts[0]) <= 90 && Math.abs(parts[1]) <= 180) {
     weatherLabel = null; weatherData = null; loadWeather(parts[0], parts[1]); return;
   }
-  // Geocode via Nominatim
+  // Geocode via Nominatim — handles city/state, ZIP, address, landmarks
   var btn = document.querySelector('#tcont .sbtn-primary');
-  if (btn) btn.textContent = 'Searching\u2026';
+  if (btn) { btn.textContent = 'Searching\u2026'; btn.disabled = true; }
   try {
-    var r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='
-      + encodeURIComponent(val), { headers: { 'User-Agent': 'aprs-tracker/3.0 W7CTY' } });
+    // Append 'USA' if input looks like a ZIP to bias results
+    var query = /^\d{5}(-\d{4})?$/.test(val) ? val + ', USA' : val;
+    var r = await fetch(
+      'https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=us,ca&q='
+      + encodeURIComponent(query),
+      { headers: { 'User-Agent': 'APRSaRTracker/6.2 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
+    );
     var results = await r.json();
     if (!results || !results.length) {
-      toast('Location not found: "' + val + '" — try "City, State" or coordinates');
-      if (btn) btn.textContent = 'Set'; return;
+      // Try without country bias
+      var r2 = await fetch(
+        'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(val),
+        { headers: { 'User-Agent': 'APRSaRTracker/6.2 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
+      );
+      results = await r2.json();
     }
-    weatherData = null;
-    weatherLabel = results[0].display_name;
-    loadWeather(parseFloat(results[0].lat), parseFloat(results[0].lon));
+    if (!results || !results.length) {
+      toast('Location not found: "' + val + '"\nTry: City, State  or  ZIP code  or  lat, lon');
+      if (btn) { btn.textContent = 'Set'; btn.disabled = false; } return;
+    }
+    var best = results[0];
+    var newLat = parseFloat(best.lat);
+    var newLon = parseFloat(best.lon);
+    // Build a clean label from the display name
+    var parts2 = best.display_name.split(',').slice(0, 3).map(function(s){ return s.trim(); });
+    weatherLabel = parts2.join(', ');
+    weatherData = null; nwsForecast = null;
+    // Pan the map to the geocoded location
+    if (map) map.setView([newLat, newLon], Math.max(map.getZoom(), 10));
+    loadWeather(newLat, newLon);
+    // Update input field with clean label
+    var inp = document.getElementById('wx-loc-input');
+    if (inp) inp.value = weatherLabel;
   } catch(e) {
     toast('Geocoding failed: ' + e.message);
-    if (btn) btn.textContent = 'Set';
+  } finally {
+    if (btn) { btn.textContent = 'Set'; btn.disabled = false; }
   }
 }
 
@@ -5199,9 +5223,9 @@ function weatherHTML() {
 
   // Location input
   var html = '<div class="sec-h">Location</div>'
-    + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">City and state, or coordinates. Blank = map center.</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Address, city/state, ZIP code, or coordinates. Blank = map center.</div>'
     + '<div class="frow field">'
-    + '<input class="finput" id="wx-loc-input" placeholder="e.g. Indianapolis, IN  or  39.7684, -86.1581"'
+    + '<input class="finput" id="wx-loc-input" placeholder="City, State  or  ZIP  or  lat, lon"'
     + ' value="' + (typeof weatherLat !== 'undefined' && weatherLat !== null ? htmlEscape(weatherLabel || (weatherLat.toFixed(4) + ', ' + weatherLon.toFixed(4))) : '') + '"'
     + ' onkeydown="if(event.key===\'Enter\') setWeatherLocation()"/>'
     + '<button class="sbtn sbtn-primary" onclick="setWeatherLocation()">Set</button>'
