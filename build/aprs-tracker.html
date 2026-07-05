@@ -1113,8 +1113,8 @@ body.light #coord-display{background:rgba(255,255,255,.92)}
     <div id="setloc-modal" style="display:none;position:absolute;bottom:16px;left:50%;transform:translateX(-50%);width:min(380px,94vw);background:var(--panel);border:1.5px solid var(--green);border-radius:10px;padding:16px 18px;z-index:600;box-shadow:var(--shadow)">
       <button onclick="closeSetLocation()" style="position:absolute;top:10px;right:12px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">&#x2715;</button>
       <div style="font-family:monospace;font-size:15px;font-weight:700;color:var(--green);margin-bottom:4px">&#128205; SET MY LOCATION</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">GPS/Wi-Fi positioning can be inaccurate on desktop systems. Set your position manually for reliable accuracy.</div>
-      <div class="field"><input class="finput" id="setloc-input" placeholder="38.0, -77.97  or  38&deg;0'00&quot; N" style="width:100%"/></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Enter an address, city/state, ZIP code, or GPS coordinates.</div>
+      <div class="field"><input class="finput" id="setloc-input" placeholder="Address, City ST, ZIP, or lat, lon" style="width:100%" onkeydown="if(event.key==='Enter')applySetLocation()"/></div>
       <div class="frow">
         <button class="sbtn sbtn-primary" onclick="applySetLocation()">Set Location</button>
         <button class="sbtn sbtn-cyan" onclick="pickOnMapMode()">Pick on Map</button>
@@ -1615,12 +1615,38 @@ function pickOnMapMode() {
   document.getElementById('setloc-status').textContent = 'Tap anywhere on the map to set your location\u2026';
   toast('Tap the map to set your location');
 }
-function applySetLocation() {
+async function applySetLocation() {
   var raw = document.getElementById('setloc-input').value.trim();
+  if (!raw) return;
+  var status = document.getElementById('setloc-status');
+
+  // Try coordinate parse first (lat/lon or DMS)
   var parsed = parseDMS(raw);
-  if (!parsed) { document.getElementById('setloc-status').textContent = 'Could not parse. Try "38.0, -77.97".'; return; }
-  setMyLocation(parsed.lat, parsed.lon);
-  closeSetLocation();
+  if (parsed) {
+    setMyLocation(parsed.lat, parsed.lon);
+    closeSetLocation();
+    return;
+  }
+
+  // Geocode via Nominatim — handles address, city/state, ZIP
+  status.textContent = 'Searching\u2026';
+  try {
+    var query = /^\d{5}(-\d{4})?$/.test(raw) ? raw + ', USA' : raw;
+    var r = await fetch(
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query),
+      { headers: { 'User-Agent': 'APRSaRTracker/6.2 (github.com/W7CTY/aprs-tracker; w7cty@outlook.com)' } }
+    );
+    var results = await r.json();
+    if (!results || !results.length) {
+      status.textContent = 'Location not found. Try a city/state or ZIP code.';
+      return;
+    }
+    var loc = results[0];
+    setMyLocation(parseFloat(loc.lat), parseFloat(loc.lon));
+    closeSetLocation();
+  } catch(e) {
+    status.textContent = 'Search failed: ' + e.message;
+  }
 }
 function setMyLocation(lat, lon) {
   if (myMark) map.removeLayer(myMark);
@@ -5279,7 +5305,7 @@ function weatherHTML() {
   html += '<div class="sec-h" style="display:flex;justify-content:space-between;align-items:center">'
     + '<span>Current Conditions</span>'
     + (wxAge !== null ? '<span style="font-size:10px;font-weight:400;color:var(--muted)">Updated ' + wxAge + ' min ago</span>' : '')
-    + '</div>';
+    + '</div>'
     + '<div class="result-box" style="text-align:center;padding:16px">'
     + '<div style="font-size:36px">' + wmoIcon(cur.weather_code) + '</div>'
     + '<div style="font-size:28px;font-weight:700;color:var(--orange);margin:4px 0">' + Math.round(cur.temperature_2m) + '\u00B0F</div>'
