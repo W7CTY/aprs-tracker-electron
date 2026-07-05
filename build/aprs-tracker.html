@@ -1620,7 +1620,7 @@ async function applySetLocation() {
   if (!raw) return;
   var status = document.getElementById('setloc-status');
 
-  // Try coordinate parse first (lat/lon or DMS)
+  // Try coordinate/DMS parse first
   var parsed = parseDMS(raw);
   if (parsed) {
     setMyLocation(parsed.lat, parsed.lon);
@@ -1628,19 +1628,15 @@ async function applySetLocation() {
     return;
   }
 
-  // Geocode via Nominatim — handles address, city/state, ZIP
-  status.textContent = 'Searching\u2026';
+  // Geocode using Open-Meteo + Census API (works from file:// with no Referer)
+  status.textContent = 'Searching…';
   try {
-    var query = /^\d{5}$/.test(raw) ? raw + ' USA' : raw;
-    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=3&addressdetails=1&q=' + encodeURIComponent(query);
-    var r = await fetch(url);
-    var results = await r.json();
-    if (!results || !results.length) {
-      status.textContent = 'Not found. Try: "Indianapolis, IN" or "46201" or "123 Main St, City, ST"';
+    var result = await geocodeLocation(raw);
+    if (!result) {
+      status.textContent = 'Not found. Try: "Indianapolis, IN" or ZIP "46201"';
       return;
     }
-    var loc = results[0];
-    setMyLocation(parseFloat(loc.lat), parseFloat(loc.lon));
+    setMyLocation(result.lat, result.lon);
     closeSetLocation();
   } catch(e) {
     status.textContent = 'Search failed: ' + e.message;
@@ -4817,45 +4813,87 @@ function toggleRadarOverlay() {
 // ════════════════════════════════════════════════════════
 
 // ── Location input handler ────────────────────────────────────────────
+// ── Geocoding — works from file:// (no Referer required) ────────────
+// Open-Meteo geocoding for city/state/address (same provider as weather, CORS OK)
+// US Census Bureau API for ZIP codes (government API, no CORS restrictions)
+async function geocodeLocation(query) {
+  query = query.trim();
+  if (!query) return null;
+
+  // ZIP code: use Census Bureau API (most accurate for US ZIP → city)
+  if (/^\d{5}$/.test(query)) {
+    try {
+      var r = await fetch(
+        'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress'
+        + '?address=' + encodeURIComponent(query)
+        + '&benchmark=2020&format=json'
+      );
+      var d = await r.json();
+      var matches = d.result && d.result.addressMatches;
+      if (matches && matches.length) {
+        var m = matches[0];
+        return {
+          lat:   m.coordinates.y,
+          lon:   m.coordinates.x,
+          label: m.matchedAddress
+        };
+      }
+    } catch(e) { /* fall through to Open-Meteo */ }
+  }
+
+  // City/state/address: Open-Meteo geocoding API
+  try {
+    var r2 = await fetch(
+      'https://geocoding-api.open-meteo.com/v1/search'
+      + '?name=' + encodeURIComponent(query)
+      + '&count=1&language=en&format=json'
+    );
+    var d2 = await r2.json();
+    if (d2.results && d2.results.length) {
+      var res = d2.results[0];
+      var parts = [res.name];
+      if (res.admin1) parts.push(res.admin1);
+      if (res.country_code && res.country_code !== 'US') parts.push(res.country);
+      return {
+        lat:   res.latitude,
+        lon:   res.longitude,
+        label: parts.join(', ')
+      };
+    }
+  } catch(e) { /* fall through */ }
+
+  return null;
+}
+
 async function setWeatherLocation() {
   var val = document.getElementById('wx-loc-input').value.trim();
   if (!val) {
     weatherLat = null; weatherLon = null; weatherLabel = null;
     weatherData = null; loadWeather(); return;
   }
-  // Try lat,lon first
+  // Try lat,lon coordinates first
   var parts = val.split(/[,\s]+/).map(Number);
   if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])
       && Math.abs(parts[0]) <= 90 && Math.abs(parts[1]) <= 180) {
-    weatherLabel = null; weatherData = null; loadWeather(parts[0], parts[1]); return;
+    weatherLabel = val; weatherData = null; loadWeather(parts[0], parts[1]); return;
   }
-  // Geocode via Nominatim — handles city/state, ZIP, address, landmarks
+  // Geocode using Open-Meteo + Census API (both work from file:// origin)
   var btn = document.querySelector('#tcont .sbtn-primary');
-  if (btn) { btn.textContent = 'Searching\u2026'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Searching…'; btn.disabled = true; }
   try {
-    // Append 'USA' if input looks like a ZIP to bias results
-    var query = /^\d{5}$/.test(val) ? val + ' USA' : val;
-    var r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=3&q=' + encodeURIComponent(query));
-    var results = await r.json();
-    if (!results || !results.length) {
-      toast('Location not found: "' + val + '" — try City, State or ZIP');
-      if (btn) { btn.textContent = 'Set'; btn.disabled = false; } return;
+    var result = await geocodeLocation(val);
+    if (!result) {
+      toast('Location not found: "' + val + '" — try "City, State" or a ZIP code');
+      return;
     }
-    var best = results[0];
-    var newLat = parseFloat(best.lat);
-    var newLon = parseFloat(best.lon);
-    // Build a clean label from the display name
-    var parts2 = best.display_name.split(',').slice(0, 3).map(function(s){ return s.trim(); });
-    weatherLabel = parts2.join(', ');
+    weatherLabel = result.label;
     weatherData = null; nwsForecast = null;
-    // Pan the map to the geocoded location
-    if (map) map.setView([newLat, newLon], Math.max(map.getZoom(), 10));
-    loadWeather(newLat, newLon);
-    // Update input field with clean label
+    if (map) map.setView([result.lat, result.lon], Math.max(map.getZoom(), 10));
     var inp = document.getElementById('wx-loc-input');
-    if (inp) inp.value = weatherLabel;
+    if (inp) inp.value = result.label;
+    loadWeather(result.lat, result.lon);
   } catch(e) {
-    toast('Geocoding failed: ' + e.message);
+    toast('Location search failed: ' + e.message);
   } finally {
     if (btn) { btn.textContent = 'Set'; btn.disabled = false; }
   }
@@ -5056,35 +5094,40 @@ async function loadWeather(forceLat, forceLon) {
   wxAlerts = null;
   nwsForecast = null;
   weatherData = null;
-  document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather...</div>';
+  document.getElementById('tcont').innerHTML = '<div class="empty">Loading weather…</div>';
 
-  // Fetch NWS and Open-Meteo in parallel — NWS for forecast text, Open-Meteo for current conditions
-  var nwsPromise = fetchNWSAll(lat, lon);
-  var omPromise  = fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
-    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
-    + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
-    + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
-    + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
-    + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7');
-
+  // Step 1: Fetch Open-Meteo (primary — always works, renders immediately)
   try {
-    var omResp  = await omPromise;
+    var omResp = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+      + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,'
+      + 'wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,pressure_msl'
+      + '&hourly=temperature_2m,precipitation_probability,weather_code,precipitation,rain,showers,snowfall,freezinglevel_height,wind_speed_10m'
+      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
+      + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7'
+    );
     weatherData = await omResp.json();
   } catch(e) {
     document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + htmlEscape(String(e.message)) + '</div>';
     return;
   }
 
-  try {
-    var nwsData = await nwsPromise;
-    if (nwsData) {
-      nwsForecast = nwsData.periods;       // day/night text forecasts
-      nwsHourly   = nwsData.hourlyPeriods; // hourly NWS data
-    }
-  } catch(e) { nwsForecast = null; }
-
-  if (curTab === 'weather') renderTabInto('weather','tcont');
+  // Step 2: Render immediately with Open-Meteo data — do not wait for NWS
+  if (curTab === 'weather') renderTabInto('weather', 'tcont');
   updateMapWxHUD();
+
+  // Step 3: Fetch NWS in background with 5s timeout — updates forecast text if successful
+  var nwsTimeout = new Promise(function(resolve) { setTimeout(resolve, 5000, null); });
+  Promise.race([fetchNWSAll(lat, lon), nwsTimeout]).then(function(nwsData) {
+    if (nwsData) {
+      nwsForecast = nwsData.periods;
+      nwsHourly   = nwsData.hourlyPeriods;
+      // Re-render only if still on weather tab to add NWS text forecasts
+      if (curTab === 'weather') renderTabInto('weather', 'tcont');
+    }
+  }).catch(function() { nwsForecast = null; });
+
+  // Step 4: Start alerts and refresh timers
   if (typeof loadWxAlerts === 'function') loadWxAlerts(lat, lon);
   startAlertPolling();
   startWeatherRefresh();
