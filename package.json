@@ -1,7 +1,7 @@
 {
   "name": "aprs-tracker",
   "productName": "APRSaR Tracker",
-  "version": "6.2.3",
+  "version": "6.2.4",
   "description": "Full-featured SAR & APRS toolkit for ham radio operators",
   "main": "src/main.js",
   "author": {
@@ -19,12 +19,12 @@
   },
   "devDependencies": {
     "electron": "^29.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "co.914communications.aprs-tracker",
     "productName": "APRSaR Tracker",
-    "copyright": "Copyright \u00a9 2026 W7CTY / 914 Communications",
+    "copyright": "Copyright © 2026 W7CTY / 914 Communications",
     "directories": {
       "output": "dist"
     },
