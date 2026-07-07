@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.2.3 - build 20260704 -->
+<!-- APRSaR Tracker v6.2.4 - build 20260707 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>APRSaR Tracker - Robert W Donze - W7CTY</title>
+<title>APRSaR Tracker</title>
 <style>
 /* required styles */
 
@@ -1021,7 +1021,7 @@ body.light #coord-display{background:rgba(255,255,255,.92)}
 <body>
 <div id="hdr">
   <div class="logo">APRS<span>TRACK</span></div>
-  <div class="tagline">Ham Radio &amp; SAR &middot; Robert W Donze - W7CTY</div>
+  <div class="tagline">Ham Radio &amp; SAR</div>
   <button class="hbtn" id="sar-btn" onclick="toggleSAR()">&#128308; SAR</button>
   <button class="hbtn" id="flood-btn" onclick="toggleFloodOverlay()">&#127966; Flood</button>
   <button class="hbtn" id="thbtn" onclick="toggleTheme()">&#9728;&#65039; Light</button>
@@ -3271,6 +3271,18 @@ function playAlertTone(loop) {
     }, 1500);
   }
 }
+function playAlertToneRepeat(times) {
+  if (!alertAudioEl) alertAudioEl = new Audio(ALERT_TONE_DATA_URI);
+  var count = 0;
+  function playOne() {
+    if (count >= times) return;
+    count++;
+    alertAudioEl.currentTime = 0;
+    alertAudioEl.play().catch(function(){});
+    if (count < times) setTimeout(playOne, 1500);
+  }
+  playOne();
+}
 
 function stopAlertTone() {
   if (alertLoopTimer) { clearInterval(alertLoopTimer); alertLoopTimer = null; }
@@ -4328,10 +4340,12 @@ async function setWeatherLocation() {
 var seenAlertIds     = new Set();    // track already-notified alerts
 var alertPollTimer   = null;
 var weatherRefreshTimer = null;
+var weatherFetchTime   = null;
 var WX_REFRESH_MS       = 15 * 60 * 1000;
 var autoThemeEnabled    = false;
 var sessionNotes        = '';
 var expandedAlertIds    = new Set();
+var h24Visible          = false;
 var lpbLayer            = null;
 var activeLpbProfile    = null;
 var drLayer             = null;
@@ -4370,7 +4384,7 @@ async function loadWxAlerts(lat, lon) {
             '\u26A0\uFE0F ' + (a.event || 'NWS Alert'),
             (a.headline || a.description || '').substring(0, 200)
           );
-          if (typeof playAlertTone === 'function') playAlertTone(false);
+          if (typeof playAlertToneRepeat === 'function') playAlertToneRepeat(5);
           sendAprsAlertToContacts('\u26A0 NWS ' + (a.severity||'Alert') + ': ' + (a.event||'Alert'));
         }
       }
@@ -4459,6 +4473,7 @@ async function loadWeather(forceLat, forceLon) {
       + '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7'
     );
     weatherData = await resp.json();
+  weatherFetchTime = Date.now();
   } catch(e) {
     document.getElementById('tcont').innerHTML = '<div class="empty">Weather unavailable: ' + htmlEscape(String(e.message)) + '</div>';
     return;
@@ -4677,7 +4692,7 @@ function weatherHTML() {
   var hourly = weatherData.hourly;
 
   // Current conditions
-  var wxAge=weatherData&&weatherData.current&&weatherData.current.time?Math.round((Date.now()-new Date(weatherData.current.time).getTime())/60000):null;
+  var wxAge = weatherFetchTime ? Math.round((Date.now()-weatherFetchTime)/60000) : null;
   html += '<div class="sec-h" style="display:flex;justify-content:space-between;align-items:center">'+'<span>Current Conditions</span>'+(wxAge!==null?'<span style="font-size:10px;font-weight:400;color:var(--muted)">Updated '+wxAge+' min ago</span>':'')+'</div>';
     + '<div class="result-box" style="text-align:center;padding:16px">'
     + '<div style="font-size:36px">' + wmoIcon(cur.weather_code) + '</div>'
@@ -4707,7 +4722,10 @@ function weatherHTML() {
     + precipBreakdownHTML(hourly);
 
   // 7-day forecast accordion with NWS text forecasts
-  if(daily&&daily.sunrise&&daily.sunrise[0]){var xsr=new Date(daily.sunrise[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});var xss=new Date(daily.sunset[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});html+='<div class="frow" style="margin-top:8px;gap:6px">';html+='<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNRISE</div><div class="rv" style="font-size:13px">&#9728;&#65039; '+xsr+'</div></div>';html+='<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNSET</div><div class="rv" style="font-size:13px">&#127750; '+xss+'</div></div>';html+='</div>';}if(hourly&&hourly.time&&hourly.time.length){var hn=Date.now(),h24=[];for(var hi=0;hi<hourly.time.length&&h24.length<24;hi++){if(new Date(hourly.time[hi]).getTime()>=hn-1800000)h24.push(hi);}if(h24.length>=3){var hT=h24.map(function(i){return hourly.temperature_2m[i]||0;});var hP=h24.map(function(i){return hourly.precipitation_probability[i]||0;});var hMn=Math.min.apply(null,hT)-5,hMx=Math.max.apply(null,hT)+5;var hW=280,hH=70,hPd=4;var hTx=function(i){return hPd+i*(hW-hPd*2)/(h24.length-1);};var hTy=function(t){return hH-hPd-(t-hMn)/(hMx-hMn)*(hH-hPd*2);};var hPts=h24.map(function(_,i){return hTx(i)+','+hTy(hT[i]);}).join(' ');var hBars=h24.map(function(_,i){var bh=hP[i]/100*(hH-hPd*2);return '<rect x="'+(hTx(i)-3)+'" y="'+(hH-hPd-bh)+'" width="6" height="'+bh+'" fill="#38bdf8" opacity="0.3"/>';}).join('');html+='<div class="sec-h" style="margin-top:14px">Next 24 Hours</div>';html+='<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:7px;padding:8px 10px 14px">';html+='<svg width="100%" viewBox="0 0 '+(hW+8)+' '+(hH+14)+'" style="display:block">';html+=hBars+'<polyline points="'+hPts+'" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linejoin="round"/>';h24.forEach(function(_,i){if(i%6===0){html+='<circle cx="'+hTx(i)+'" cy="'+hTy(hT[i])+'" r="3" fill="var(--orange)"/>';html+='<text x="'+hTx(i)+'" y="'+(hTy(hT[i])-5)+'" text-anchor="middle" font-size="8" fill="var(--text)" font-family="monospace">'+Math.round(hT[i])+'\u00B0</text>';html+='<text x="'+hTx(i)+'" y="'+(hH+10)+'" text-anchor="middle" font-size="8" fill="var(--muted)" font-family="monospace">'+new Date(hourly.time[h24[i]]).toLocaleTimeString([],{hour:'numeric'})+'</text>';}});html+='</svg><div style="font-size:10px;color:var(--muted);margin-top:2px">&#9632; Precip% &nbsp; <span style="color:var(--orange)">&#9472;</span> Temp \u00B0F</div></div>';}}
+  if(daily&&daily.sunrise&&daily.sunrise[0]){var xsr=new Date(daily.sunrise[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});var xss=new Date(daily.sunset[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});html+='<div class="frow" style="margin-top:8px;gap:6px">';html+='<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNRISE</div><div class="rv" style="font-size:13px">&#9728;&#65039; '+xsr+'</div></div>';html+='<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNSET</div><div class="rv" style="font-size:13px">&#127750; '+xss+'</div></div>';html+='</div>';}if(hourly&&hourly.time&&hourly.time.length){var hn=Date.now(),h24=[];for(var hi=0;hi<hourly.time.length&&h24.length<24;hi++){if(new Date(hourly.time[hi]).getTime()>=hn-1800000)h24.push(hi);}if(h24.length>=3){var hT=h24.map(function(i){return hourly.temperature_2m[i]||0;});var hP=h24.map(function(i){return hourly.precipitation_probability[i]||0;});var hMn=Math.min.apply(null,hT)-5,hMx=Math.max.apply(null,hT)+5;var hW=280,hH=70,hPd=4;var hTx=function(i){return hPd+i*(hW-hPd*2)/(h24.length-1);};var hTy=function(t){return hH-hPd-(t-hMn)/(hMx-hMn)*(hH-hPd*2);};var hPts=h24.map(function(_,i){return hTx(i)+','+hTy(hT[i]);}).join(' ');var hBars=h24.map(function(_,i){var bh=hP[i]/100*(hH-hPd*2);return '<rect x="'+(hTx(i)-3)+'" y="'+(hH-hPd-bh)+'" width="6" height="'+bh+'" fill="#38bdf8" opacity="0.3"/>';}).join('');html+='<div class="sec-h" style="margin-top:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="h24Visible=!h24Visible;renderTabInto(\'weather\',\'tcont\')">'+
+        '<span>Next 24 Hours</span>'+
+        '<span style="font-size:11px;color:var(--muted)">'+(h24Visible?'▼ hide':'► show')+'</span>'+
+        '</div>';if(h24Visible){html+='<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:7px;padding:8px 10px 14px">';html+='<svg width="100%" viewBox="0 0 '+(hW+8)+' '+(hH+14)+'" style="display:block">';html+=hBars+'<polyline points="'+hPts+'" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linejoin="round"/>';h24.forEach(function(_,i){if(i%6===0){html+='<circle cx="'+hTx(i)+'" cy="'+hTy(hT[i])+'" r="3" fill="var(--orange)"/>';html+='<text x="'+hTx(i)+'" y="'+(hTy(hT[i])-5)+'" text-anchor="middle" font-size="8" fill="var(--text)" font-family="monospace">'+Math.round(hT[i])+'\u00B0</text>';html+='<text x="'+hTx(i)+'" y="'+(hH+10)+'" text-anchor="middle" font-size="8" fill="var(--muted)" font-family="monospace">'+new Date(hourly.time[h24[i]]).toLocaleTimeString([],{hour:'numeric'})+'</text>';}});html+='</svg><div style="font-size:10px;color:var(--muted);margin-top:2px">&#9632; Precip% &nbsp; <span style="color:var(--orange)">&#9472;</span> Temp \u00B0F</div></div>';}}}
   html += '<div class="sec-h" style="margin-top:16px">7-Day Forecast <span style="font-size:10px;color:var(--muted);font-weight:400">tap to expand</span></div>';
   for (var i=0; i<daily.time.length; i++) {
     var d = new Date(daily.time[i] + 'T12:00:00');
@@ -4818,7 +4836,7 @@ function autoLogSave() {
   try {
     var state = {
       ts:           Date.now(),
-      version:      '6.2.3',
+      version:      '6.2.4',
       callsign:     (document.getElementById('callsign') || {}).value || '',
       mapCenter:    map ? [map.getCenter().lat, map.getCenter().lng] : null,
       mapZoom:      map ? map.getZoom() : null,
@@ -6049,7 +6067,7 @@ function applyImportedData(imported, sourceFilename) {
 }
 
 function aboutHTML() {
-  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.3';
+  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.4';
   var repoUrl = (typeof window !== 'undefined' && window.APP_REPO_URL) ? window.APP_REPO_URL : 'https://github.com/W7CTY/aprs-tracker';
   return '<div style="text-align:center;padding:8px 4px 16px">'
     + '<div style="font-family:monospace;font-size:22px;font-weight:700;color:var(--orange);letter-spacing:.04em">APRS<span style="color:var(--cyan)">TRACK</span></div>'
