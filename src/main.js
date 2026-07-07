@@ -10,7 +10,7 @@ const os = require('os');
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const APP_TITLE    = 'APRSaR Tracker';
-const APP_SUBTITLE = 'Robert W Donze - W7CTY · 914 Communications';
+const APP_SUBTITLE = 'Ham Radio & SAR Toolkit';
 const GITHUB_REPO  = 'W7CTY/aprs-tracker';
 const HTML_ASSET   = 'aprs-tracker.html';
 
