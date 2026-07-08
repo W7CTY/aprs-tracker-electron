@@ -1,7 +1,7 @@
 {
   "name": "aprs-tracker",
   "productName": "APRSaR Tracker",
-  "version": "6.2.5",
+  "version": "6.2.6",
   "description": "Full-featured SAR & APRS toolkit for ham radio operators",
   "main": "src/main.js",
   "author": {

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.2.5 - build 20260708 -->
+<!-- APRSaR Tracker v6.2.6 - build 20260708 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -4693,7 +4693,7 @@ function weatherHTML() {
 
   // Current conditions
   var wxAge = weatherFetchTime ? Math.round((Date.now()-weatherFetchTime)/60000) : null;
-  html += '<div class="sec-h" style="display:flex;justify-content:space-between;align-items:center">'+'<span>Current Conditions</span>'+(wxAge!==null?'<span style="font-size:10px;font-weight:400;color:var(--muted)">Updated '+wxAge+' min ago</span>':'')+'</div>';
+  html += '<div class="sec-h" style="display:flex;justify-content:space-between;align-items:center">'+'<span>Current Conditions</span>'+(wxAge!==null?'<span style="font-size:10px;font-weight:400;color:var(--muted)">Updated '+wxAge+' min ago</span>':'')+'</div>'
     + '<div class="result-box" style="text-align:center;padding:16px">'
     + '<div style="font-size:36px">' + wmoIcon(cur.weather_code) + '</div>'
     + '<div style="font-size:28px;font-weight:700;color:var(--orange);margin:4px 0">' + Math.round(cur.temperature_2m) + '\u00B0F</div>'
@@ -4836,7 +4836,7 @@ function autoLogSave() {
   try {
     var state = {
       ts:           Date.now(),
-      version:      '6.2.5',
+      version:      '6.2.6',
       callsign:     (document.getElementById('callsign') || {}).value || '',
       mapCenter:    map ? [map.getCenter().lat, map.getCenter().lng] : null,
       mapZoom:      map ? map.getZoom() : null,
@@ -6067,7 +6067,7 @@ function applyImportedData(imported, sourceFilename) {
 }
 
 function aboutHTML() {
-  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.5';
+  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.6';
   var repoUrl = (typeof window !== 'undefined' && window.APP_REPO_URL) ? window.APP_REPO_URL : 'https://github.com/W7CTY/aprs-tracker';
   return '<div style="text-align:center;padding:8px 4px 16px">'
     + '<div style="font-family:monospace;font-size:22px;font-weight:700;color:var(--orange);letter-spacing:.04em">APRS<span style="color:var(--cyan)">TRACK</span></div>'
