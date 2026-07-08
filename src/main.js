@@ -135,15 +135,12 @@ function loadApp() {
   // Prefer cached (updated) HTML, fall back to bundled
   const htmlPath = fs.existsSync(HTML_CACHE) ? HTML_CACHE : BUNDLED_HTML;
 
-  // Seed VERSION_FILE from bundled HTML on first launch so About shows
-  // the real version instead of "bundled"
-  if (!fs.existsSync(VERSION_FILE)) {
-    try {
-      const htmlText = fs.readFileSync(BUNDLED_HTML, 'utf8');
-      const vMatch = htmlText.match(/APRSaR Tracker v([\d.]+)/);
-      if (vMatch) saveCoreVersion(vMatch[1]);
-    } catch (e) { /* ignore */ }
-  }
+  // Always seed VERSION_FILE from bundled HTML so About shows real version
+  try {
+    const htmlText = fs.readFileSync(BUNDLED_HTML, 'utf8');
+    const vMatch = htmlText.match(/APRSaR Tracker v([\d.]+)/);
+    if (vMatch) saveCoreVersion(vMatch[1]);
+  } catch (e) { /* ignore */ }
 
   console.log('[APRSaR] Loading HTML from:', htmlPath);
   console.log('[APRSaR] HTML exists:', fs.existsSync(htmlPath));
