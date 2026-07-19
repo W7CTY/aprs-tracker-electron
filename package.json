@@ -1,9 +1,9 @@
 {
   "name": "aprs-tracker",
   "productName": "APRSaR Tracker",
-  "version": "6.2.7",
+  "version": "6.7.0",
   "description": "Full-featured SAR & APRS toolkit for ham radio operators",
-  "main": "src/main.js",
+  "main": "src/loader.js",
   "author": {
     "name": "914 Communications",
     "email": "admin@914communications.com"
@@ -18,6 +18,7 @@
     "electron-updater": "^6.1.7"
   },
   "devDependencies": {
+    "bytenode": "^1.6.0",
     "electron": "^29.0.0",
     "electron-builder": "^24.13.3"
   },
@@ -29,15 +30,20 @@
       "output": "dist"
     },
     "files": [
-      "src/**/*",
-      "build/**/*"
+      "src/loader.js",
+      "src/main.jsc",
+      "src/preload.js",
+      "node_modules/bytenode/**/*"
     ],
     "extraResources": [
       {
         "from": "build/",
         "to": "build/",
         "filter": [
-          "**/*"
+          "icon.ico",
+          "icon.png",
+          "ICON_NOTE.txt",
+          "aprs-tracker.html.enc"
         ]
       }
     ],
@@ -71,6 +77,20 @@
       "provider": "github",
       "owner": "W7CTY",
       "repo": "aprs-tracker-electron"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "HamRadio",
+      "synopsis": "APRSaR Tracker - Ham Radio & SAR Toolkit",
+      "description": "Ham Radio & Search and Rescue tracking and tools application"
     }
   }
 }

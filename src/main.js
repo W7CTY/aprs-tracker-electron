@@ -1,6 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron');
+const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -23,9 +24,38 @@ const VERSION_FILE = path.join(DATA_DIR, 'core-version.json');
 // In packaged app: process.resourcesPath = win-unpacked/resources/
 //   HTML is at resources/build/aprs-tracker.html (via extraResources)
 // In dev: use local build/ directory
-const BUNDLED_HTML = app.isPackaged
-  ? path.join(process.resourcesPath, 'build', 'aprs-tracker.html')
-  : path.join(__dirname, '..', 'build', 'aprs-tracker.html');
+// Encrypted HTML blob — plaintext never written to disk
+const BUNDLED_ENC = app.isPackaged
+  ? path.join(process.resourcesPath, 'build', 'aprs-tracker.html.enc')
+  : path.join(__dirname, '..', 'build', 'aprs-tracker.html.enc');
+
+// Encryption key — XOR-obfuscated integer array (no ASCII hex in binary)
+const HTML_KEY = (function() {
+  const _K = [174,200,113,134,155,107,64,223,92,40,113,70,16,28,78,136,
+              174,97,1,20,145,175,253,172,100,21,204,232,190,148,182,1];
+  const _S = [90,60,113,136,175,18,109,228,155,39,243,78,129,197,48,118,
+              90,60,113,136,175,18,109,228,155,39,243,78,129,197,48,118];
+  return Buffer.from(_K.map(function(b,i){ return b ^ _S[i]; }));
+})();
+
+function decryptHTML(encPath) {
+  try {
+    const enc    = fs.readFileSync(encPath);
+    let   offset = 0;
+    const ivLen  = enc.readUInt16BE(offset); offset += 2;
+    const iv     = enc.slice(offset, offset + ivLen); offset += ivLen;
+    const tagLen = enc.readUInt16BE(offset); offset += 2;
+    const tag    = enc.slice(offset, offset + tagLen); offset += tagLen;
+    const data   = enc.slice(offset);
+    const _alg  = ['aes',['256','gcm'].join('-')].join('-');
+    const dec    = crypto.createDecipheriv(_alg, HTML_KEY, iv);
+    dec.setAuthTag(tag);
+    return Buffer.concat([dec.update(data), dec.final()]).toString('utf8');
+  } catch (e) {
+    console.error('[APRSaR] decryptHTML failed:', e.message);
+    return null;
+  }
+}
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -132,26 +162,26 @@ function buildMenu() {
 // ── Load HTML core ────────────────────────────────────────────────────────────
 
 function loadApp() {
-  // Prefer cached (updated) HTML, fall back to bundled
-  const htmlPath = fs.existsSync(HTML_CACHE) ? HTML_CACHE : BUNDLED_HTML;
+  // Decrypt HTML into memory — plaintext never touches disk
+  const encPath  = fs.existsSync(HTML_CACHE + '.enc') ? HTML_CACHE + '.enc' : BUNDLED_ENC;
+  const htmlText = decryptHTML(encPath);
 
-  // Always seed VERSION_FILE from bundled HTML so About shows real version
+  if (!htmlText) {
+    mainWindow.loadURL('data:text/html,<h2 style="font-family:sans-serif;padding:40px;color:#c00">'
+      + 'APRSaR Tracker: Could not load application data.<br>'
+      + '<small>The installation may be corrupted. Please reinstall.</small></h2>');
+    return;
+  }
+
+  // Seed version from decrypted content
   try {
-    const htmlText = fs.readFileSync(BUNDLED_HTML, 'utf8');
     const vMatch = htmlText.match(/APRSaR Tracker v([\d.]+)/);
     if (vMatch) saveCoreVersion(vMatch[1]);
   } catch (e) { /* ignore */ }
 
-  console.log('[APRSaR] Loading HTML from:', htmlPath);
-  console.log('[APRSaR] HTML exists:', fs.existsSync(htmlPath));
-
-  if (!fs.existsSync(htmlPath)) {
-    // Show a diagnostic page if HTML is missing
-    mainWindow.loadURL('data:text/html,<h2 style="font-family:sans-serif;padding:40px">APRSaR Tracker: HTML core not found.<br><small>' + htmlPath.replace(/</g,'&lt;') + '</small></h2>');
-    return;
-  }
-
-  mainWindow.loadFile(htmlPath);
+  // Load via data URL — stays in memory, never written to disk as plaintext
+  const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlText);
+  mainWindow.loadURL(dataUrl);
 
   // Log renderer errors to main process console
   mainWindow.webContents.on('did-fail-load', (e, code, desc, url) => {
@@ -168,7 +198,7 @@ function loadApp() {
     mainWindow.webContents.executeJavaScript(`
       window.APP_VERSION     = ${JSON.stringify(coreVersion)};
       window.APP_REPO_URL    = 'https://github.com/${GITHUB_REPO}';
-      window.APP_PLATFORM    = 'windows';
+      window.APP_PLATFORM    = process.platform === 'win32' ? 'windows' : 'linux';
       // Clear any stale localStorage keys from previous installs
       localStorage.removeItem('legal_accepted_version');
       localStorage.removeItem('app_lock_hash');
