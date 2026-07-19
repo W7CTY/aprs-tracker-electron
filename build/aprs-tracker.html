@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- APRSaR Tracker v6.2.6 - build 20260708 -->
+<!-- APRSaR Tracker v6.2.7 - build 20260708 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -4346,6 +4346,7 @@ var autoThemeEnabled    = false;
 var sessionNotes        = '';
 var expandedAlertIds    = new Set();
 var h24Visible          = false;
+var precipVisible       = false;
 var lpbLayer            = null;
 var activeLpbProfile    = null;
 var drLayer             = null;
@@ -4714,12 +4715,17 @@ function weatherHTML() {
   html += '<div class="sec-h" style="margin-top:12px">Wind</div>';
   html += renderWindRose(cur.wind_speed_10m||0, cur.wind_direction_10m||0, cur.wind_gusts_10m||0);
 
-  // ── Precipitation type / intensity breakdown ──────────────────────
-  html += '<div class="sec-h" style="margin-top:14px">Next 24 Hours — Precipitation Type &amp; Intensity</div>'
-    + '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'
-    + '\u2744\uFE0F Snow \u00b7 \u{1F327} Rain \u00b7 \u{1F9CA} Freezing Rain \u00b7 \u{1F328} Mix'
-    + '</div>'
-    + precipBreakdownHTML(hourly);
+  // ── Precipitation type / intensity
+  html += '<div class="sec-h" style="margin-top:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="precipVisible=!precipVisible;renderTabInto(\'weather\',\'tcont\')">'
+    + '<span>Next 24 Hours — Precipitation</span>'
+    + '<span style="font-size:11px;color:var(--muted)">'+(precipVisible?'▼ hide':'► show')+'</span>'
+    + '</div>';
+  if (precipVisible) {
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'
+      + '\u2744\uFE0F Snow \u00b7 &#127783; Rain \u00b7 &#129482; Freezing Rain \u00b7 &#127784; Mix'
+      + '</div>'
+      + precipBreakdownHTML(hourly);
+  }   + precipBreakdownHTML(hourly);
 
   // 7-day forecast accordion with NWS text forecasts
   if(daily&&daily.sunrise&&daily.sunrise[0]){var xsr=new Date(daily.sunrise[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});var xss=new Date(daily.sunset[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});html+='<div class="frow" style="margin-top:8px;gap:6px">';html+='<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNRISE</div><div class="rv" style="font-size:13px">&#9728;&#65039; '+xsr+'</div></div>';html+='<div class="result-box" style="flex:1;text-align:center"><div class="rk">SUNSET</div><div class="rv" style="font-size:13px">&#127750; '+xss+'</div></div>';html+='</div>';}if(hourly&&hourly.time&&hourly.time.length){var hn=Date.now(),h24=[];for(var hi=0;hi<hourly.time.length&&h24.length<24;hi++){if(new Date(hourly.time[hi]).getTime()>=hn-1800000)h24.push(hi);}if(h24.length>=3){var hT=h24.map(function(i){return hourly.temperature_2m[i]||0;});var hP=h24.map(function(i){return hourly.precipitation_probability[i]||0;});var hMn=Math.min.apply(null,hT)-5,hMx=Math.max.apply(null,hT)+5;var hW=280,hH=70,hPd=4;var hTx=function(i){return hPd+i*(hW-hPd*2)/(h24.length-1);};var hTy=function(t){return hH-hPd-(t-hMn)/(hMx-hMn)*(hH-hPd*2);};var hPts=h24.map(function(_,i){return hTx(i)+','+hTy(hT[i]);}).join(' ');var hBars=h24.map(function(_,i){var bh=hP[i]/100*(hH-hPd*2);return '<rect x="'+(hTx(i)-3)+'" y="'+(hH-hPd-bh)+'" width="6" height="'+bh+'" fill="#38bdf8" opacity="0.3"/>';}).join('');html+='<div class="sec-h" style="margin-top:14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="h24Visible=!h24Visible;renderTabInto(\'weather\',\'tcont\')">'+
@@ -4836,7 +4842,7 @@ function autoLogSave() {
   try {
     var state = {
       ts:           Date.now(),
-      version:      '6.2.6',
+      version:      '6.2.7',
       callsign:     (document.getElementById('callsign') || {}).value || '',
       mapCenter:    map ? [map.getCenter().lat, map.getCenter().lng] : null,
       mapZoom:      map ? map.getZoom() : null,
@@ -6067,7 +6073,7 @@ function applyImportedData(imported, sourceFilename) {
 }
 
 function aboutHTML() {
-  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.6';
+  var version = (typeof window !== 'undefined' && window.APP_VERSION) ? window.APP_VERSION : '6.2.7';
   var repoUrl = (typeof window !== 'undefined' && window.APP_REPO_URL) ? window.APP_REPO_URL : 'https://github.com/W7CTY/aprs-tracker';
   return '<div style="text-align:center;padding:8px 4px 16px">'
     + '<div style="font-family:monospace;font-size:22px;font-weight:700;color:var(--orange);letter-spacing:.04em">APRS<span style="color:var(--cyan)">TRACK</span></div>'
